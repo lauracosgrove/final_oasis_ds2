@@ -1,0 +1,101 @@
+---
+title: "Simple Models"
+author: "Laura Cosgrove"
+date: "5/1/2019"
+output: github_document
+---
+
+The class of "simple", i.e., interpretable and inflexible, classification models can be thought to include: 
+
+- Logistic Regression
+
+- Linear Discriminant Analysis
+
+```{r}
+library(tidyverse)
+library(caret)
+library(pROC)
+
+```
+
+```{r}
+cog_data <- readRDS("./data/cog_data.RDS")
+```
+
+
+```{r}
+set.seed(1)
+train_index <- createDataPartition(cog_data$cdr, p = 0.66, list = FALSE, times = 1)
+
+cog_train <- cog_data[train_index,] %>% select(-mmse)
+cog_test  <- cog_data[-train_index,]
+
+levels(cog_train$cdr)
+```
+
+More `caret` data preparation:
+
+```{r}
+# Using caret
+ctrl1 <- trainControl(method = "repeatedcv",
+                     repeats = 5,
+                     summaryFunction = twoClassSummary, #because we're in the two-class setting
+                     classProbs = TRUE) #because need predicted class probabilities to get ROC curve
+```
+
+
+# Logistic Regression
+
+```{r}
+set.seed(12)
+logit_fit <- train(x = cog_train[4:18],
+                   y = cog_train$cdr,
+                   method = "glm",
+                   metric = "ROC",
+                   trControl = ctrl1)
+
+summary(logit_fit$finalModel) 
+
+test_pred_prob  <- predict(logit_fit$finalModel, newdata = cog_test,
+                      type = "response")
+
+test_pred <- rep("NonDementia", length(test_pred_prob))
+
+test_pred[test_pred_prob > 0.5] <- "Dementia" 
+
+confusionMatrix(data = as.factor(test_pred), 
+                reference = cog_test$cdr,
+                positive = "Dementia")
+```
+
+
+```{r}
+##Model Fit (for my practice)
+broom::glance(logit_fit$finalModel)
+dev <- broom::glance(logit_fit$finalModel) %>% 
+  pull(deviance)
+
+pval = 1 - pchisq(dev, 596) #DOF = 610 (49 rows with NA) - 15 parameters - 1
+pval #FTR, model is acceptable.
+
+#Against Null
+null_dev <- broom::glance(logit_fit$finalModel) %>% 
+  pull(null.deviance)
+
+test_stat = null_dev - dev
+pval = 1 - pchisq(test_stat, df = 13) #DOF = 609 - 596 
+pval #Reject, go with the larger model
+```
+
+ROC Curve:
+
+```{r}
+roc_logit_test <- roc(cog_test$cdr, test_pred_prob)
+
+plot(roc_logit_test, legacy.axes = TRUE, print.auc = TRUE) 
+plot(smooth(roc_logit_test), col = 4, add = TRUE) 
+```
+
+
+# Linear Discriminant Analysis
+
