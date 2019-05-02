@@ -15,22 +15,75 @@ The class of "simple", i.e., interpretable and inflexible, classification models
 library(tidyverse)
 library(caret)
 library(pROC)
-
+library(RANN)
 ```
+
+# Variable Selection (Linear Combos, Zero Variance, Multicollinearity)
 
 ```{r}
-cog_data <- readRDS("./data/cog_data.RDS")
+cog_data <- readRDS("./data/cog_data.RDS") %>% select(-mmse, -year_round)
+
+##Linear Combos
+findLinearCombos(cog_data[3:17] %>% drop_na())
+
+colnames(cog_data[3:17]) #drop 9, cortex vol, and 15, cortical_white_matter_vol
+
+cog_data <- cog_data %>% 
+  select(-cortex_vol, -cortical_white_matter_vol) 
+
+##Near Zero Variance
+nearZeroVar(cog_data[3:14], saveMetrics= TRUE) #we good
+
+
+## Correlation
+desc_cor <- cor(cog_data[3:14] %>% drop_na())
+summary(desc_cor[upper.tri(desc_cor)])
+
+highlyCorDescr <- findCorrelation(desc_cor, cutoff = .80) 
+# Drops: total_gray_vol, supra_tentorial_vol, lh_cortical_white_matter_vol, rh_cortex_vol: makes sense.
+# Retains intra_cranial_vol, lh_cortex_vol, sub_cort_gray_vol, and rh_cortical_white_matter_vol
+
+cog_data <- cog_data %>% 
+  select(-total_gray_vol, -supra_tentorial_vol, -lh_cortical_white_matter_vol, -rh_cortex_vol) #from documentation: TotalGray - total gray matter volume. This is simply the sum of lhCortex + rhCortex + SubCortGray + CerebellumGM
+
+desc_cor2 <- cor(cog_data[3:10] %>% drop_na())
+highlyCorDescr <- findCorrelation(desc_cor2, cutoff = .80)  #none over .8
+summary(desc_cor2[upper.tri(desc_cor2)]) #still some high correlation
+
+write_rds(cog_data, "./data/cog_data_preproc.RDS")
+
+cog_data <- readRDS("./data/cog_data_preproc.RDS")
 ```
 
+# Preprocessing
+
+First, divide into training and test:
 
 ```{r}
 set.seed(1)
-train_index <- createDataPartition(cog_data$cdr, p = 0.66, list = FALSE, times = 1)
+train_index <- createDataPartition(cog_data$cdr, p = 2/3, list = FALSE, times = 1)
 
-cog_train <- cog_data[train_index,] %>% select(-mmse)
+cog_train <- cog_data[train_index,] 
 cog_test  <- cog_data[-train_index,]
+```
 
-levels(cog_train$cdr)
+## Imputation and Centering/scaling
+```{r}
+skimr::skim(cog_train[3:11])
+#note: all vars positive,
+#note: <10% missing: perfect to impute
+set.seed(12)
+preProc_fn <- preProcess(cog_train[3:11], 
+           method = c("center", "scale", "knnImpute"),
+          k = 5,
+          knnSummary = mean,
+          verbose = TRUE)
+
+cog_train[3:11] <- predict(preProc_fn, cog_train[3:11]) 
+cog_test[3:11] <- predict(preProc_fn, cog_test[3:11]) 
+
+write_rds(cog_train, "./data/cog_train_preproc.RDS")
+write_rds(cog_test, "./data/cog_test_preproc.RDS")
 ```
 
 More `caret` data preparation:
@@ -46,26 +99,20 @@ ctrl1 <- trainControl(method = "repeatedcv",
 
 # Logistic Regression
 
-```{r}
+```{r warning = FALSE}
 set.seed(12)
-logit_fit <- train(x = cog_train[4:18],
+logit_fit <- train(x = cog_train[3:11],
                    y = cog_train$cdr,
                    method = "glm",
                    metric = "ROC",
                    trControl = ctrl1)
 
+
+logit_fit #Resampled AUC: 0.8089988 
+
 summary(logit_fit$finalModel) 
 
-test_pred_prob  <- predict(logit_fit$finalModel, newdata = cog_test,
-                      type = "response")
-
-test_pred <- rep("NonDementia", length(test_pred_prob))
-
-test_pred[test_pred_prob > 0.5] <- "Dementia" 
-
-confusionMatrix(data = as.factor(test_pred), 
-                reference = cog_test$cdr,
-                positive = "Dementia")
+train_pred_prob  <- predict(logit_fit, type = "prob")
 ```
 
 
@@ -75,7 +122,7 @@ broom::glance(logit_fit$finalModel)
 dev <- broom::glance(logit_fit$finalModel) %>% 
   pull(deviance)
 
-pval = 1 - pchisq(dev, 596) #DOF = 610 (49 rows with NA) - 15 parameters - 1
+pval = 1 - pchisq(dev, 655) #DOF = 665 (49 rows with NA) - 9 predictors - 1
 pval #FTR, model is acceptable.
 
 #Against Null
@@ -83,14 +130,22 @@ null_dev <- broom::glance(logit_fit$finalModel) %>%
   pull(null.deviance)
 
 test_stat = null_dev - dev
-pval = 1 - pchisq(test_stat, df = 13) #DOF = 609 - 596 
+pval = 1 - pchisq(test_stat, df = 9) #DOF = 664 - 655 
 pval #Reject, go with the larger model
 ```
 
-ROC Curve:
+# Performance on test data
 
 ```{r}
-roc_logit_test <- roc(cog_test$cdr, test_pred_prob)
+test_pred  <- predict(logit_fit, newdata = cog_test, type = "raw")
+
+confusionMatrix(data = test_pred, 
+                reference = cog_test$cdr,
+                positive = "Dementia")
+
+test_pred_prob  <- predict(logit_fit, newdata = cog_test, type = "prob")
+
+roc_logit_test <- roc(cog_test$cdr, test_pred_prob$Dementia)
 
 plot(roc_logit_test, legacy.axes = TRUE, print.auc = TRUE) 
 plot(smooth(roc_logit_test), col = 4, add = TRUE) 

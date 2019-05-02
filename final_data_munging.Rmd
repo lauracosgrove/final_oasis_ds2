@@ -173,7 +173,7 @@ cog_data <- last_data %>%
   mutate(cdr = factor(case_when(cdr == 0 ~ 0,
                                 cdr > 0 ~ 1), 
                       levels = c(0, 1),
-                      labels = c("Non-Dementia", "Dementia"))) %>% 
+                      labels = c("NonDementia", "Dementia"))) %>% 
   select(-adrc_adrcclinicaldata_id, -fs_fsdata_id, -starts_with("dx"), -starts_with("day")) %>% 
   mutate(age = age_at_entry + year_round) %>% 
   select(subject, age, year_round, cdr, mmse, apoe, height, weight, intra_cranial_vol:cortical_white_matter_vol) 
@@ -201,6 +201,7 @@ Finally, write our csv:
 
 ```{r}
 write_csv(cog_data, "./data/cog_data")
+saveRDS(cog_data, "./data/cog_data.RDS")
 ```
 
 ## Plots
