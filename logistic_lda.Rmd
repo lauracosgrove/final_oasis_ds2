@@ -32,11 +32,11 @@ cog_data <- cog_data %>%
   select(-cortex_vol, -cortical_white_matter_vol) 
 
 ##Near Zero Variance
-nearZeroVar(cog_data[3:14], saveMetrics= TRUE) #we good
+nearZeroVar(cog_data[3:15], saveMetrics= TRUE) #we good
 
 
 ## Correlation
-desc_cor <- cor(cog_data[3:14] %>% drop_na())
+desc_cor <- cor(cog_data[3:15] %>% drop_na())
 summary(desc_cor[upper.tri(desc_cor)])
 
 highlyCorDescr <- findCorrelation(desc_cor, cutoff = .80) 
@@ -46,7 +46,7 @@ highlyCorDescr <- findCorrelation(desc_cor, cutoff = .80)
 cog_data <- cog_data %>% 
   select(-total_gray_vol, -supra_tentorial_vol, -lh_cortical_white_matter_vol, -rh_cortex_vol) #from documentation: TotalGray - total gray matter volume. This is simply the sum of lhCortex + rhCortex + SubCortGray + CerebellumGM
 
-desc_cor2 <- cor(cog_data[3:10] %>% drop_na())
+desc_cor2 <- cor(cog_data[3:11] %>% drop_na())
 highlyCorDescr <- findCorrelation(desc_cor2, cutoff = .80)  #none over .8
 summary(desc_cor2[upper.tri(desc_cor2)]) #still some high correlation
 
