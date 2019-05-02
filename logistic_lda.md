@@ -150,8 +150,6 @@ summary(desc_cor2[upper.tri(desc_cor2)]) #still some high correlation
 
 ``` r
 write_rds(cog_data, "./data/cog_data_preproc.RDS")
-
-cog_data <- readRDS("./data/cog_data_preproc.RDS")
 ```
 
 # Preprocessing
@@ -159,6 +157,8 @@ cog_data <- readRDS("./data/cog_data_preproc.RDS")
 First, divide into training and test:
 
 ``` r
+cog_data <- readRDS("./data/cog_data_preproc.RDS")
+
 set.seed(1)
 train_index <- createDataPartition(cog_data$cdr, p = 2/3, list = FALSE, times = 1)
 
@@ -220,6 +220,7 @@ preProc_fn <- preProcess(cog_train[3:11],
 cog_train[3:11] <- predict(preProc_fn, cog_train[3:11]) 
 cog_test[3:11] <- predict(preProc_fn, cog_test[3:11]) 
 
+#Write RDS
 write_rds(cog_train, "./data/cog_train_preproc.RDS")
 write_rds(cog_test, "./data/cog_test_preproc.RDS")
 ```
@@ -232,6 +233,10 @@ ctrl1 <- trainControl(method = "repeatedcv",
                      repeats = 5,
                      summaryFunction = twoClassSummary, #because we're in the two-class setting
                      classProbs = TRUE) #because need predicted class probabilities to get ROC curve
+
+#Read RDS 
+cog_train <- readRDS("./data/cog_train_preproc.RDS")
+cog_test <- readRDS("./data/cog_test_preproc.RDS")
 ```
 
 # Logistic Regression
@@ -333,7 +338,7 @@ pval #Reject, go with the larger model
 
     ## [1] 0
 
-# Performance on test data
+## Performance on test data
 
 ``` r
 test_pred  <- predict(logit_fit, newdata = cog_test, type = "raw")
@@ -382,4 +387,139 @@ plot(smooth(roc_logit_test), col = 4, add = TRUE)
 
 ![](logistic_lda_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
+Risk allele e4, intra\_cranial\_vol, lh\_cortex\_vol,
+rh\_cortical\_white\_matter\_vol, and sub\_cort\_gray\_vol are all
+significant. Unfortunately, sub\_cort\_gray\_vol is not in the expected
+direction, and intracranial volume really shouldn’t carry any
+information. We saw some funny results with sub\_cort\_gray\_vol in EDA;
+perhaps we should go with total gray volume as a coefficient instead.
+
 # Linear Discriminant Analysis
+
+``` r
+set.seed(13)
+lda_fit <- train(x = cog_train[3:11],
+                   y = cog_train$cdr,
+                   method = "lda", #no tuning parameter
+                   metric = "ROC",
+                   trControl = ctrl1)
+
+lda_fit #Resampled AUC: 0.8071995
+```
+
+    ## Linear Discriminant Analysis 
+    ## 
+    ## 665 samples
+    ##   9 predictor
+    ##   2 classes: 'NonDementia', 'Dementia' 
+    ## 
+    ## No pre-processing
+    ## Resampling: Cross-Validated (10 fold, repeated 5 times) 
+    ## Summary of sample sizes: 599, 599, 599, 599, 598, 598, ... 
+    ## Resampling results:
+    ## 
+    ##   ROC        Sens       Spec     
+    ##   0.8071995  0.9140056  0.4804286
+
+``` r
+lda_fit$finalModel
+```
+
+    ## Call:
+    ## lda(x, y)
+    ## 
+    ## Prior probabilities of groups:
+    ## NonDementia    Dementia 
+    ##   0.6962406   0.3037594 
+    ## 
+    ## Group means:
+    ##                    age protective_e2    risk_e4      height       weight
+    ## NonDementia -0.1457522    0.03272405 -0.1231886 -0.03302235  0.003023402
+    ## Dementia     0.3340756   -0.08028824  0.2887381  0.05559531 -0.021338326
+    ##             intra_cranial_vol lh_cortex_vol sub_cort_gray_vol
+    ## NonDementia        -0.0923435     0.1639895       -0.01337828
+    ## Dementia            0.2116586    -0.3758769        0.03066408
+    ##             rh_cortical_white_matter_vol
+    ## NonDementia                   0.06411319
+    ## Dementia                     -0.14695252
+    ## 
+    ## Coefficients of linear discriminants:
+    ##                                       LD1
+    ## age                          -0.122996943
+    ## protective_e2                -0.009202885
+    ## risk_e4                       0.392933668
+    ## height                        0.055813272
+    ## weight                        0.103698414
+    ## intra_cranial_vol             1.335205675
+    ## lh_cortex_vol                -1.197750114
+    ## sub_cort_gray_vol             0.237329553
+    ## rh_cortical_white_matter_vol -0.454222612
+
+``` r
+train_pred_prob_lda  <- predict(lda_fit, type = "prob")
+```
+
+Here, we see that intracranial volume and lh\_cortex\_vol have the
+largest discriminating values on the data;
+rh\_cortical\_white\_matter\_vol and risk\_e4 are in the second tier of
+importance. This dovetails nicely with our logistic regression results.
+
+## Performance on test data
+
+``` r
+test_pred_lda  <- predict(lda_fit, newdata = cog_test, type = "raw")
+
+confusionMatrix(data = test_pred_lda, 
+                reference = cog_test$cdr,
+                positive = "Dementia")
+```
+
+    ## Confusion Matrix and Statistics
+    ## 
+    ##              Reference
+    ## Prediction    NonDementia Dementia
+    ##   NonDementia         209       51
+    ##   Dementia             22       50
+    ##                                           
+    ##                Accuracy : 0.7801          
+    ##                  95% CI : (0.7317, 0.8235)
+    ##     No Information Rate : 0.6958          
+    ##     P-Value [Acc > NIR] : 0.0003734       
+    ##                                           
+    ##                   Kappa : 0.435           
+    ##                                           
+    ##  Mcnemar's Test P-Value : 0.0010486       
+    ##                                           
+    ##             Sensitivity : 0.4950          
+    ##             Specificity : 0.9048          
+    ##          Pos Pred Value : 0.6944          
+    ##          Neg Pred Value : 0.8038          
+    ##              Prevalence : 0.3042          
+    ##          Detection Rate : 0.1506          
+    ##    Detection Prevalence : 0.2169          
+    ##       Balanced Accuracy : 0.6999          
+    ##                                           
+    ##        'Positive' Class : Dementia        
+    ## 
+
+``` r
+test_pred_prob_lda  <- predict(lda_fit, newdata = cog_test, type = "prob")
+
+roc_lda_test <- roc(cog_test$cdr, test_pred_prob_lda$Dementia)
+
+plot(roc_lda_test, legacy.axes = TRUE, print.auc = TRUE) 
+plot(smooth(roc_lda_test), col = 4, add = TRUE) 
+```
+
+![](logistic_lda_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+
+# Logistic vs. LDA:
+
+``` r
+res <- resamples(list(logistic = logit_fit,
+                 lda = lda_fit)
+                 )
+ggplot(res) + labs(title = "AUC Performance on Resampled Data") + theme_minimal()
+```
+
+![](logistic_lda_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->

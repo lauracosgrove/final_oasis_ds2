@@ -52,7 +52,6 @@ summary(desc_cor2[upper.tri(desc_cor2)]) #still some high correlation
 
 write_rds(cog_data, "./data/cog_data_preproc.RDS")
 
-cog_data <- readRDS("./data/cog_data_preproc.RDS")
 ```
 
 # Preprocessing
@@ -60,6 +59,8 @@ cog_data <- readRDS("./data/cog_data_preproc.RDS")
 First, divide into training and test:
 
 ```{r}
+cog_data <- readRDS("./data/cog_data_preproc.RDS")
+
 set.seed(1)
 train_index <- createDataPartition(cog_data$cdr, p = 2/3, list = FALSE, times = 1)
 
@@ -82,6 +83,7 @@ preProc_fn <- preProcess(cog_train[3:11],
 cog_train[3:11] <- predict(preProc_fn, cog_train[3:11]) 
 cog_test[3:11] <- predict(preProc_fn, cog_test[3:11]) 
 
+#Write RDS
 write_rds(cog_train, "./data/cog_train_preproc.RDS")
 write_rds(cog_test, "./data/cog_test_preproc.RDS")
 ```
@@ -94,6 +96,10 @@ ctrl1 <- trainControl(method = "repeatedcv",
                      repeats = 5,
                      summaryFunction = twoClassSummary, #because we're in the two-class setting
                      classProbs = TRUE) #because need predicted class probabilities to get ROC curve
+
+#Read RDS 
+cog_train <- readRDS("./data/cog_train_preproc.RDS")
+cog_test <- readRDS("./data/cog_test_preproc.RDS")
 ```
 
 
@@ -134,7 +140,7 @@ pval = 1 - pchisq(test_stat, df = 9) #DOF = 664 - 655
 pval #Reject, go with the larger model
 ```
 
-# Performance on test data
+## Performance on test data
 
 ```{r}
 test_pred  <- predict(logit_fit, newdata = cog_test, type = "raw")
@@ -151,6 +157,50 @@ plot(roc_logit_test, legacy.axes = TRUE, print.auc = TRUE)
 plot(smooth(roc_logit_test), col = 4, add = TRUE) 
 ```
 
+Risk allele e4, intra_cranial_vol, lh_cortex_vol, rh_cortical_white_matter_vol, and sub_cort_gray_vol are all significant. Unfortunately, sub_cort_gray_vol is not in the expected direction, and intracranial volume really shouldn't carry any information. We saw some funny results with sub_cort_gray_vol in EDA; perhaps we should go with total gray volume as a coefficient instead. 
 
 # Linear Discriminant Analysis
+
+```{r, warning = FALSE}
+set.seed(13)
+lda_fit <- train(x = cog_train[3:11],
+                   y = cog_train$cdr,
+                   method = "lda", #no tuning parameter
+                   metric = "ROC",
+                   trControl = ctrl1)
+
+lda_fit #Resampled AUC: 0.8071995
+
+lda_fit$finalModel
+
+train_pred_prob_lda  <- predict(lda_fit, type = "prob")
+```
+
+Here, we see that intracranial volume and lh_cortex_vol have the largest discriminating values on the data; rh_cortical_white_matter_vol and risk_e4 are in the second tier of importance. This dovetails nicely with our logistic regression results.
+
+## Performance on test data
+
+```{r}
+test_pred_lda  <- predict(lda_fit, newdata = cog_test, type = "raw")
+
+confusionMatrix(data = test_pred_lda, 
+                reference = cog_test$cdr,
+                positive = "Dementia")
+
+test_pred_prob_lda  <- predict(lda_fit, newdata = cog_test, type = "prob")
+
+roc_lda_test <- roc(cog_test$cdr, test_pred_prob_lda$Dementia)
+
+plot(roc_lda_test, legacy.axes = TRUE, print.auc = TRUE) 
+plot(smooth(roc_lda_test), col = 4, add = TRUE) 
+```
+
+# Logistic vs. LDA:
+
+```{r}
+res <- resamples(list(logistic = logit_fit,
+                 lda = lda_fit)
+                 )
+ggplot(res) + labs(title = "AUC Performance on Resampled Data") + theme_minimal()
+```
 
