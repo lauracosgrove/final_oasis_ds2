@@ -21,14 +21,20 @@ We will compare a series of models:
 
 - Naive Bayes 
 
-- Classification and regression trees (CART)
+- Classification trees (CART)
 
-- Gradient boosting machine 
+- Gradient boosting machine -- more difficult to tune than random forest
 
-- Random forest classifier
+- Random forest classifier -- pretty robust to bad tuning
 
 - Support vector machines
 
+Visualization:
 
+- Variable importance
+
+- partial dependence plots
+
+- LIME algorithm approximates complicated black box model with simpler model
 
 
