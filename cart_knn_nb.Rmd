@@ -96,3 +96,27 @@ rpart.plot(tree_1se, box.palette = "GnPu", branch.lty = 3, shadow.col = "gray", 
 
 ```
 
+
+# Naive Bayes
+
+
+```{r, warning=FALSE}
+set.seed(1)
+
+# 3 tuning parameters
+nbGrid <- expand.grid(usekernel = c(FALSE, TRUE), # FALSE means use Gaussian; TRUE means non-parametric kernel estimate
+                      fL = 1, # rLaplace smoother. Handles density of points that fall lutside of the obseved density structure. Does not need to be large. Default is 0. Can use 0:1
+                      adjust = seq(0,10,by = 1)) # constrols smoothness of density estimate; large means less smooth (more flexible)
+
+model.nb <- train(x = cog_train[3:10],
+                  y = cog_train$cdr,
+                  method = "nb", # specifies bandwidth of kernel estimate
+                  tuneGrid = nbGrid,
+                  metric = "ROC",
+                  trControl = ctrl1)
+
+plot(model.nb)
+model.nb$results[which.max(model.nb$results$ROC), ]
+```
+
+
