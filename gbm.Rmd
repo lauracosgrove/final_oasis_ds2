@@ -96,3 +96,52 @@ saveRDS(gbm_fit_3, file = "./data/gbm_fit_3.RDS")
 gbm_fit_3$results[which.max(gbm_fit_3$results$ROC),]
 ```
 
+# xgboost
+
+```{r}
+library(xgboost)
+```
+
+```{r}
+#preparing matrix
+
+dtrain <- xgb.DMatrix(data = model.matrix(cdr ~., cog_train[2:10])[,-1], 
+                      label = (as.numeric(cog_train$cdr) -1) ) 
+dtest <- xgb.DMatrix(data = model.matrix(cdr ~., cog_test[2:10])[,-1],
+                     label = (as.numeric(cog_test$cdr) -1) )
+
+set.seed(4)
+params <- list(booster = "gbtree", 
+               objective = "binary:logistic", 
+               eta=0.3, gamma=0, max_depth=6, 
+               min_child_weight=1, subsample=1, 
+               colsample_bytree=1)
+
+xgbcv <- xgb.cv( params = params, 
+                 data = dtrain, 
+                 nrounds = 100, 
+                 metrics = "auc",
+                 nfold = 5, showsd = T, 
+                 stratified = T)
+xgbcv$evaluation_log
+
+#first default - model training
+xgb1 <- xgb.train (params = params, 
+                   data = dtrain, 
+                   nrounds = 100, 
+                   watchlist = list(val=dtest,train=dtrain), 
+                   print.every.n = 10, 
+                   early.stop.round = 10, maximize = F , eval_metric = "auc")
+#model prediction
+xgbpred <- predict(xgb1, dtest)
+xgbpred <- ifelse (xgbpred > 0.5,1,0)
+
+xgbpred <- factor(xgbpred, levels = c("0", "1"))
+xgbpred <- forcats::fct_recode(xgbpred, "NonDementia" = "0", "Dementia" = "1")
+            
+confusionMatrix(xgbpred, reference = cog_test$cdr)
+
+
+
+```
+
