@@ -12,8 +12,8 @@ library(tidyverse)
 ```
 
 ```{r}
-train <- readRDS("./data/cog_train_preproc.RDS")
-test <- readRDS("./data/cog_test_preproc.RDS")
+train <- readRDS("./data/cog_train_preproc.RDS") %>% dplyr::select(-subject)
+test <- readRDS("./data/cog_test_preproc.RDS") %>% dplyr::select(-subject)
 
 ```
 
@@ -93,6 +93,7 @@ set.seed(1)
 svml.fit <- train(cdr~., 
                   data = train, 
                   method = "svmLinear2",
+                  metric = "roc",
                   tuneGrid = data.frame(cost = exp(seq(-5,1,len=20))),
                   trControl = ctrl)
 
@@ -107,6 +108,7 @@ set.seed(1)
 svmr.fit <- train(cdr~., 
                   data = train,
                   method = "svmRadial",
+                  metric = "roc",
                   tuneGrid = svmr.grid,
                   trControl = ctrl)
 
@@ -117,7 +119,8 @@ ggplot(svmr.fit, highlight = TRUE)
 Model comparison with `resamples`.
 
 ```{r}
-resamp <- resamples(list(svmr = svmr.fit, svml = svml.fit))
+resamp <- resamples(list(svmr = svmr.fit, 
+                         svml = svml.fit))
 bwplot(resamp)
 ```
 
