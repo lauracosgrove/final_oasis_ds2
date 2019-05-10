@@ -38,19 +38,22 @@ rf.fit <- train(x = cog_train[3:10],
                 method = "ranger",
                 tuneGrid = rf.grid,
                 metric = "ROC",
-                trControl = ctrl1)
+                trControl = ctrl1,
+                importance = 'permutation')
+summary(rf.fit$finalModel)
 
-#Error in na.fail.default(list(cdr = c(1L, 1L, 1L, 1L, 1L, 2L, 1L, 2L,  : missing values in object
-rf.fit <- train(cdr~., cog_data,
-                subset = train_index,
-                method = "ranger",
-                tuneGrid = rf.grid,
-                metric = "ROC",
-                trControl = ctrl1)
+saveRDS(rf.fit, file = "./data/rf.fit.RDS")
+rf.fit = readRDS("./data/rf.fit.RDS")
 
 ggplot(rf.fit, highlight = TRUE)
 
-rf.pred <- predict(rf.fit, newdata = cog_data[-train_index,], type = "prob")[,1]
+#importance
+barplot(sort(ranger::importance(rf.fit$finalModel), 
+        decreasing = FALSE), 
+        las = 2, horiz = TRUE, cex.names = 0.7,
+        col = colorRampPalette(colors = c("darkred","white","darkblue"))(8))
+
+rf.pred <- predict(rf.fit, newdata = cog_test, type = "prob")[,1]
 
 error_rate_rf <- mean(rf.pred != cog_data$cdr[-train_index])
 ```
