@@ -1,0 +1,98 @@
+---
+title: "gbm"
+author: "Laura Cosgrove"
+date: "5/7/2019"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(caret)
+library(ranger)
+library(gbm)
+```
+
+
+```{r}
+# Using caret
+ctrl1 <- trainControl(method = "repeatedcv",
+                     repeats = 5,
+                     summaryFunction = twoClassSummary, #because we're in the two-class setting
+                     classProbs = TRUE) #because need predicted class probabilities to get ROC curve
+
+#Read RDS 
+cog_train <- readRDS("./data/cog_train_preproc.RDS")
+cog_test <- readRDS("./data/cog_test_preproc.RDS")
+```
+
+
+```{r}
+set.seed(1)
+
+#tuning 
+gbm_grid <- expand.grid(n.trees = c(2000,3000),
+                        interaction.depth = 2:10,
+                        shrinkage = c(0.01, 0.03, 0.05),
+                        n.minobsinnode = 1)
+
+gbm_fit <- train(x = cog_train[3:10],
+                 y = cog_train$cdr,
+                 method = "gbm",
+                 tuneGrid = gbm_grid,
+                 trControl = ctrl1,
+                 verbose = FALSE)
+
+ggplot(gbm_fit, highlight = TRUE) 
+
+saveRDS(gbm_fit, file = "./data/gbm_fit_1.RDS")
+
+gbm_fit$results[which.max(gbm_fit$results$ROC),]
+
+```
+
+```{r}
+set.seed(12)
+
+gbm_grid_2 <- expand.grid(n.trees = 2000,
+                        interaction.depth = 2:8,
+                        shrinkage = c(0.0008, 0.001, 0.004),
+                        n.minobsinnode = 1)
+
+gbm_fit_2 <- train(x = cog_train[3:10],
+                 y = cog_train$cdr,
+                 method = "gbm",
+                 tuneGrid = gbm_grid_2,
+                 trControl = ctrl1,
+                 verbose = FALSE)
+
+ggplot(gbm_fit_2, highlight = TRUE) 
+
+saveRDS(gbm_fit_2, file = "./data/gbm_fit_2.RDS")
+
+gbm_fit_2$results[which.max(gbm_fit_2$results$ROC),]
+
+
+```
+
+```{r}
+set.seed(12)
+
+gbm_grid_3 <- expand.grid(n.trees = c(2000, 5000),
+                        interaction.depth = 4:10,
+                        shrinkage = 0.001,
+                        n.minobsinnode = 1)
+
+gbm_fit_3 <- train(x = cog_train[3:10],
+                 y = cog_train$cdr,
+                 method = "gbm",
+                 tuneGrid = gbm_grid_3,
+                 trControl = ctrl1,
+                 verbose = FALSE)
+
+ggplot(gbm_fit_3, highlight = TRUE) 
+
+saveRDS(gbm_fit_3, file = "./data/gbm_fit_3.RDS")
+
+gbm_fit_3$results[which.max(gbm_fit_3$results$ROC),]
+```
+
