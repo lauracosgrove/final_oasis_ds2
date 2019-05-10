@@ -10,6 +10,7 @@ library(tidyverse)
 library(caret)
 library(ranger)
 library(gbm)
+library(pROC)
 ```
 
 
@@ -26,7 +27,7 @@ cog_test <- readRDS("./data/cog_test_preproc.RDS")
 ```
 
 
-```{r}
+```{r eval = FALSE}
 set.seed(1)
 
 #tuning 
@@ -41,16 +42,20 @@ gbm_fit <- train(x = cog_train[3:10],
                  tuneGrid = gbm_grid,
                  trControl = ctrl1,
                  verbose = FALSE)
-
-ggplot(gbm_fit, highlight = TRUE) 
-
-saveRDS(gbm_fit, file = "./data/gbm_fit_1.RDS")
-
-gbm_fit$results[which.max(gbm_fit$results$ROC),]
-
 ```
 
+
 ```{r}
+#Save and reload
+#saveRDS(gbm_fit, file = "./data/gbm_fit_1.RDS")
+gbm_fit_1 = readRDS("./data/gbm_fit_1.RDS")
+
+ggplot(gbm_fit_1, highlight = TRUE) 
+
+gbm_fit_1$results[which.max(gbm_fit_1$results$ROC),]
+```
+
+```{r eval = FALSE}
 set.seed(12)
 
 gbm_grid_2 <- expand.grid(n.trees = 2000,
@@ -65,16 +70,21 @@ gbm_fit_2 <- train(x = cog_train[3:10],
                  trControl = ctrl1,
                  verbose = FALSE)
 
-ggplot(gbm_fit_2, highlight = TRUE) 
+```
 
-saveRDS(gbm_fit_2, file = "./data/gbm_fit_2.RDS")
+
+```{r}
+#Save and reload
+#saveRDS(gbm_fit_2, file = "./data/gbm_fit_3.RDS")
+gbm_fit_2 = readRDS("./data/gbm_fit_2.RDS")
+
+ggplot(gbm_fit_2, highlight = TRUE) 
 
 gbm_fit_2$results[which.max(gbm_fit_2$results$ROC),]
 
-
 ```
 
-```{r}
+```{r  eval = FALSE}
 set.seed(12)
 
 gbm_grid_3 <- expand.grid(n.trees = c(2000, 5000),
@@ -84,16 +94,51 @@ gbm_grid_3 <- expand.grid(n.trees = c(2000, 5000),
 
 gbm_fit_3 <- train(x = cog_train[3:10],
                  y = cog_train$cdr,
+                 distribution = "bernoulli",
                  method = "gbm",
                  tuneGrid = gbm_grid_3,
                  trControl = ctrl1,
                  verbose = FALSE)
+```
+
+
+```{r}
+#Save and reload
+#saveRDS(gbm_fit_3, file = "./data/gbm_fit_3.RDS")
+gbm_fit_3 = readRDS("./data/gbm_fit_3.RDS")
 
 ggplot(gbm_fit_3, highlight = TRUE) 
 
-saveRDS(gbm_fit_3, file = "./data/gbm_fit_3.RDS")
 
 gbm_fit_3$results[which.max(gbm_fit_3$results$ROC),]
+
+## variable importance
+summary.gbm(gbm_fit_3$finalModel)
+
+```
+
+Test predictions, using gbm model 3:
+
+```{r}
+##Test Predictions## 
+
+pred_gbm_raw <- predict(gbm_fit_3, newdata = cog_test,
+                    n.trees = 5000,
+                    type = "raw")
+
+confusionMatrix(data = pred_gbm_raw, 
+                reference = cog_test$cdr,
+                positive = "Dementia")
+
+pred_gbm_prob <- predict(gbm_fit_3, newdata = cog_test,
+                    n.trees = 5000,
+                    type = "prob")
+
+roc_gbm_test <- roc(cog_test$cdr, pred_gbm_prob$Dementia)
+
+plot(roc_gbm_test, legacy.axes = TRUE, print.auc = TRUE) 
+plot(smooth(roc_gbm_test), col = 4, add = TRUE) 
+
 ```
 
 # xgboost
@@ -126,21 +171,41 @@ xgbcv <- xgb.cv( params = params,
 xgbcv$evaluation_log
 
 #first default - model training
-xgb1 <- xgb.train (params = params, 
+xgb1 <- xgb.train(params = params, 
                    data = dtrain, 
                    nrounds = 100, 
                    watchlist = list(val=dtest,train=dtrain), 
                    print.every.n = 10, 
                    early.stop.round = 10, maximize = F , eval_metric = "auc")
-#model prediction
-xgbpred <- predict(xgb1, dtest)
-xgbpred <- ifelse (xgbpred > 0.5,1,0)
+
+#model prediction on test data
+xgbpred_prob <- predict(xgb1, dtest)
+xgbpred <- ifelse (xgbpred_prob > 0.5,1,0)
 
 xgbpred <- factor(xgbpred, levels = c("0", "1"))
 xgbpred <- forcats::fct_recode(xgbpred, "NonDementia" = "0", "Dementia" = "1")
             
 confusionMatrix(xgbpred, reference = cog_test$cdr)
 
+#roc test
+roc_xboost_test <- roc(cog_test$cdr, xgbpred_prob)
+
+plot(roc_xboost_test, legacy.axes = TRUE, print.auc = TRUE) 
+plot(smooth(roc_xboost_test), col = 4, add = TRUE) 
+
+#roc train
+xgbpred_train_prob <- predict(xgb1, dtrain)
+
+roc_xboost_train <- roc(cog_train$cdr, xgbpred_train_prob)
+
+plot(roc_xboost_train, legacy.axes = TRUE, print.auc = TRUE) 
+plot(smooth(roc_xboost_train), col = 4, add = TRUE) 
+
+
+#importance
+mat <- xgb.importance(feature_names = colnames(cog_train[3:10]),
+                      model = xgb1)
+xgb.plot.importance(importance_matrix = mat) 
 
 
 ```
