@@ -1,0 +1,57 @@
+---
+title: "Random Forests"
+output: github_document
+---
+
+```{r}
+library(caret)
+library(randomForest)
+library(ranger)
+library(rpart)
+```
+
+```{r}
+cog_data <- readRDS("./data/cog_data_preproc.RDS")
+cog_train <- readRDS("./data/cog_train_preproc.RDS")
+cog_test <- readRDS("./data/cog_test_preproc.RDS")
+
+set.seed(1)
+train_index <- createDataPartition(cog_data$cdr, p = 2/3, list = FALSE, times = 1)
+
+ctrl1 <- trainControl(method = "repeatedcv",
+                     repeats = 5,
+                     summaryFunction = twoClassSummary, 
+                     classProbs = TRUE) 
+```
+
+```{r}
+#caret
+#not exactly sure what mtry and min.node.size should be
+rf.grid <- expand.grid(mtry = 1:6,
+                       splitrule = "gini",
+                       min.node.size = 1:6)
+
+#Error: Setting row names on a tibble is deprecated
+set.seed(1)
+rf.fit <- train(x = cog_train[3:10],
+                y = cog_train$cdr,
+                method = "ranger",
+                tuneGrid = rf.grid,
+                metric = "ROC",
+                trControl = ctrl1)
+
+#Error in na.fail.default(list(cdr = c(1L, 1L, 1L, 1L, 1L, 2L, 1L, 2L,  : missing values in object
+rf.fit <- train(cdr~., cog_data,
+                subset = train_index,
+                method = "ranger",
+                tuneGrid = rf.grid,
+                metric = "ROC",
+                trControl = ctrl1)
+
+ggplot(rf.fit, highlight = TRUE)
+
+rf.pred <- predict(rf.fit, newdata = cog_data[-train_index,], type = "prob")[,1]
+
+error_rate_rf <- mean(rf.pred != cog_data$cdr[-train_index])
+```
+
