@@ -17,14 +17,14 @@ library(tidyverse)
     ##   method            from
     ##   read_xml.response xml2
 
-    ## ── Attaching packages ───────────────────────────────────────────────────────────────── tidyverse 1.2.1 ──
+    ## ── Attaching packages ────────────────────────────────────────────────── tidyverse 1.2.1 ──
 
     ## ✔ ggplot2 3.1.1       ✔ purrr   0.3.2  
     ## ✔ tibble  2.1.1       ✔ dplyr   0.8.0.1
     ## ✔ tidyr   0.8.3       ✔ stringr 1.4.0  
     ## ✔ readr   1.3.1       ✔ forcats 0.4.0
 
-    ## ── Conflicts ──────────────────────────────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ── Conflicts ───────────────────────────────────────────────────── tidyverse_conflicts() ──
     ## ✖ dplyr::filter() masks stats::filter()
     ## ✖ dplyr::lag()    masks stats::lag()
 
@@ -60,6 +60,17 @@ library(pROC)
     ## The following objects are masked from 'package:stats':
     ## 
     ##     cov, smooth, var
+
+``` r
+library(xgboost)
+```
+
+    ## 
+    ## Attaching package: 'xgboost'
+
+    ## The following object is masked from 'package:dplyr':
+    ## 
+    ##     slice
 
 ``` r
 # Using caret
@@ -258,278 +269,603 @@ plot(smooth(roc_gbm_test), col = 4, add = TRUE)
 library(xgboost)
 ```
 
-    ## 
-    ## Attaching package: 'xgboost'
-
-    ## The following object is masked from 'package:dplyr':
-    ## 
-    ##     slice
+4.1 Step 1: Number of Iterations and the Learning Rate
 
 ``` r
-#preparing matrix
+set.seed(1)
 
-dtrain <- xgb.DMatrix(data = model.matrix(cdr ~., cog_train[2:10])[,-1], 
-                      label = (as.numeric(cog_train$cdr) -1) ) 
-dtest <- xgb.DMatrix(data = model.matrix(cdr ~., cog_test[2:10])[,-1],
-                     label = (as.numeric(cog_test$cdr) -1) )
+nrounds <- 1000
 
-set.seed(4)
-params <- list(booster = "gbtree", 
-               objective = "binary:logistic", 
-               eta=0.3, gamma=0, max_depth=6, 
-               min_child_weight=1, subsample=1, 
-               colsample_bytree=1)
+tune_grid <- expand.grid(
+  nrounds = seq(from = 200, to = nrounds, by = 50),
+  eta = c(0.025, 0.05, 0.1, 0.3),
+  max_depth = c(2, 3, 4, 5, 6),
+  gamma = 0,
+  colsample_bytree = 1,
+  min_child_weight = 1,
+  subsample = 1
+)
 
-xgbcv <- xgb.cv( params = params, 
-                 data = dtrain, 
-                 nrounds = 100, 
-                 metrics = "auc",
-                 nfold = 5, showsd = T, 
-                 stratified = T)
+tune_control <- caret::trainControl(
+  method = "cv", # cross-validation
+  number = 3, # with n folds
+  #index = createFolds(tr_treated$Id_clean), # fix the folds
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE, # FALSE for reproducible results 
+  summaryFunction = twoClassSummary, #because we're in the two-class setting
+                     classProbs = TRUE
+)
+
+xgb_tune <- caret::train(
+  cog_train[3:10],
+  y = cog_train$cdr,
+  metric = "ROC",
+  trControl = tune_control,
+  tuneGrid = tune_grid,
+  method = "xgbTree",
+  verbose = TRUE
+)
 ```
 
-    ## [1]  train-auc:0.876234+0.021853 test-auc:0.658016+0.022658 
-    ## [2]  train-auc:0.925691+0.014919 test-auc:0.697882+0.033032 
-    ## [3]  train-auc:0.943586+0.011772 test-auc:0.717112+0.032844 
-    ## [4]  train-auc:0.957192+0.007044 test-auc:0.730755+0.027421 
-    ## [5]  train-auc:0.966146+0.004860 test-auc:0.732312+0.027293 
-    ## [6]  train-auc:0.975278+0.002739 test-auc:0.732494+0.032350 
-    ## [7]  train-auc:0.979438+0.002665 test-auc:0.734314+0.035596 
-    ## [8]  train-auc:0.984398+0.001390 test-auc:0.738568+0.032535 
-    ## [9]  train-auc:0.988253+0.002042 test-auc:0.739450+0.034239 
-    ## [10] train-auc:0.989884+0.001974 test-auc:0.742119+0.032811 
-    ## [11] train-auc:0.991817+0.001738 test-auc:0.741073+0.032061 
-    ## [12] train-auc:0.993912+0.001190 test-auc:0.740095+0.035922 
-    ## [13] train-auc:0.995375+0.001440 test-auc:0.741198+0.034279 
-    ## [14] train-auc:0.996162+0.001329 test-auc:0.739375+0.033022 
-    ## [15] train-auc:0.996996+0.001253 test-auc:0.741806+0.032857 
-    ## [16] train-auc:0.997924+0.000849 test-auc:0.738443+0.034481 
-    ## [17] train-auc:0.998461+0.000767 test-auc:0.738263+0.035153 
-    ## [18] train-auc:0.998807+0.000632 test-auc:0.734617+0.033447 
-    ## [19] train-auc:0.999132+0.000526 test-auc:0.732747+0.034708 
-    ## [20] train-auc:0.999391+0.000466 test-auc:0.730570+0.037459 
-    ## [21] train-auc:0.999595+0.000410 test-auc:0.730445+0.037022 
-    ## [22] train-auc:0.999634+0.000347 test-auc:0.731590+0.036679 
-    ## [23] train-auc:0.999792+0.000237 test-auc:0.730614+0.035620 
-    ## [24] train-auc:0.999888+0.000144 test-auc:0.730262+0.036263 
-    ## [25] train-auc:0.999905+0.000141 test-auc:0.729153+0.038446 
-    ## [26] train-auc:0.999957+0.000077 test-auc:0.730078+0.036236 
-    ## [27] train-auc:0.999951+0.000098 test-auc:0.731542+0.032916 
-    ## [28] train-auc:0.999957+0.000085 test-auc:0.731345+0.032388 
-    ## [29] train-auc:0.999980+0.000039 test-auc:0.732085+0.031031 
-    ## [30] train-auc:0.999980+0.000039 test-auc:0.730901+0.032150 
-    ## [31] train-auc:0.999990+0.000020 test-auc:0.729385+0.033150 
-    ## [32] train-auc:0.999993+0.000013 test-auc:0.731897+0.034184 
-    ## [33] train-auc:0.999997+0.000006 test-auc:0.729819+0.033415 
-    ## [34] train-auc:0.999997+0.000006 test-auc:0.729778+0.033741 
-    ## [35] train-auc:1.000000+0.000000 test-auc:0.728359+0.033970 
-    ## [36] train-auc:1.000000+0.000000 test-auc:0.729555+0.035399 
-    ## [37] train-auc:1.000000+0.000000 test-auc:0.727863+0.036858 
-    ## [38] train-auc:1.000000+0.000000 test-auc:0.729144+0.036214 
-    ## [39] train-auc:1.000000+0.000000 test-auc:0.727941+0.037615 
-    ## [40] train-auc:1.000000+0.000000 test-auc:0.727905+0.037401 
-    ## [41] train-auc:1.000000+0.000000 test-auc:0.727993+0.038181 
-    ## [42] train-auc:1.000000+0.000000 test-auc:0.727817+0.039471 
-    ## [43] train-auc:1.000000+0.000000 test-auc:0.727848+0.038875 
-    ## [44] train-auc:1.000000+0.000000 test-auc:0.728247+0.038555 
-    ## [45] train-auc:1.000000+0.000000 test-auc:0.727238+0.038807 
-    ## [46] train-auc:1.000000+0.000000 test-auc:0.726938+0.038550 
-    ## [47] train-auc:1.000000+0.000000 test-auc:0.727799+0.039555 
-    ## [48] train-auc:1.000000+0.000000 test-auc:0.727304+0.040611 
-    ## [49] train-auc:1.000000+0.000000 test-auc:0.728407+0.041070 
-    ## [50] train-auc:1.000000+0.000000 test-auc:0.727901+0.039871 
-    ## [51] train-auc:1.000000+0.000000 test-auc:0.729081+0.041466 
-    ## [52] train-auc:1.000000+0.000000 test-auc:0.729072+0.040339 
-    ## [53] train-auc:1.000000+0.000000 test-auc:0.728437+0.040399 
-    ## [54] train-auc:1.000000+0.000000 test-auc:0.727456+0.040346 
-    ## [55] train-auc:1.000000+0.000000 test-auc:0.725959+0.040757 
-    ## [56] train-auc:1.000000+0.000000 test-auc:0.725124+0.040912 
-    ## [57] train-auc:1.000000+0.000000 test-auc:0.725072+0.042292 
-    ## [58] train-auc:1.000000+0.000000 test-auc:0.724890+0.041846 
-    ## [59] train-auc:1.000000+0.000000 test-auc:0.724917+0.042187 
-    ## [60] train-auc:1.000000+0.000000 test-auc:0.723445+0.041911 
-    ## [61] train-auc:1.000000+0.000000 test-auc:0.722682+0.040886 
-    ## [62] train-auc:1.000000+0.000000 test-auc:0.723226+0.039830 
-    ## [63] train-auc:1.000000+0.000000 test-auc:0.723428+0.040055 
-    ## [64] train-auc:1.000000+0.000000 test-auc:0.723223+0.040726 
-    ## [65] train-auc:1.000000+0.000000 test-auc:0.723312+0.040829 
-    ## [66] train-auc:1.000000+0.000000 test-auc:0.721857+0.040819 
-    ## [67] train-auc:1.000000+0.000000 test-auc:0.721311+0.041062 
-    ## [68] train-auc:1.000000+0.000000 test-auc:0.721326+0.042700 
-    ## [69] train-auc:1.000000+0.000000 test-auc:0.722480+0.041214 
-    ## [70] train-auc:1.000000+0.000000 test-auc:0.721919+0.042079 
-    ## [71] train-auc:1.000000+0.000000 test-auc:0.722890+0.042306 
-    ## [72] train-auc:1.000000+0.000000 test-auc:0.722685+0.042566 
-    ## [73] train-auc:1.000000+0.000000 test-auc:0.722441+0.042731 
-    ## [74] train-auc:1.000000+0.000000 test-auc:0.722753+0.042353 
-    ## [75] train-auc:1.000000+0.000000 test-auc:0.722551+0.042378 
-    ## [76] train-auc:1.000000+0.000000 test-auc:0.722317+0.043185 
-    ## [77] train-auc:1.000000+0.000000 test-auc:0.723259+0.043541 
-    ## [78] train-auc:1.000000+0.000000 test-auc:0.722580+0.042697 
-    ## [79] train-auc:1.000000+0.000000 test-auc:0.721914+0.042025 
-    ## [80] train-auc:1.000000+0.000000 test-auc:0.722309+0.043474 
-    ## [81] train-auc:1.000000+0.000000 test-auc:0.722340+0.042446 
-    ## [82] train-auc:1.000000+0.000000 test-auc:0.722414+0.042268 
-    ## [83] train-auc:1.000000+0.000000 test-auc:0.723351+0.042163 
-    ## [84] train-auc:1.000000+0.000000 test-auc:0.723054+0.042416 
-    ## [85] train-auc:1.000000+0.000000 test-auc:0.722241+0.042566 
-    ## [86] train-auc:1.000000+0.000000 test-auc:0.722573+0.042497 
-    ## [87] train-auc:1.000000+0.000000 test-auc:0.722957+0.042690 
-    ## [88] train-auc:1.000000+0.000000 test-auc:0.724969+0.043653 
-    ## [89] train-auc:1.000000+0.000000 test-auc:0.723786+0.044229 
-    ## [90] train-auc:1.000000+0.000000 test-auc:0.723456+0.044496 
-    ## [91] train-auc:1.000000+0.000000 test-auc:0.723372+0.044908 
-    ## [92] train-auc:1.000000+0.000000 test-auc:0.723597+0.044060 
-    ## [93] train-auc:1.000000+0.000000 test-auc:0.722668+0.044268 
-    ## [94] train-auc:1.000000+0.000000 test-auc:0.723003+0.044117 
-    ## [95] train-auc:1.000000+0.000000 test-auc:0.722884+0.043850 
-    ## [96] train-auc:1.000000+0.000000 test-auc:0.722601+0.043016 
-    ## [97] train-auc:1.000000+0.000000 test-auc:0.722855+0.044218 
-    ## [98] train-auc:1.000000+0.000000 test-auc:0.722119+0.043397 
-    ## [99] train-auc:1.000000+0.000000 test-auc:0.721492+0.043002 
-    ## [100]    train-auc:1.000000+0.000000 test-auc:0.722373+0.044058
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
 
 ``` r
-xgbcv$evaluation_log
+# helper function for the plots
+tuneplot <- function(x, probs = .30) {
+  ggplot(x) +
+    coord_cartesian(ylim = c(quantile(x$results$ROC, probs = probs), max(x$results$ROC))) +
+    theme_bw()
+}
+
+tuneplot(xgb_tune)
 ```
 
-    ##      iter train_auc_mean train_auc_std test_auc_mean test_auc_std
-    ##   1:    1      0.8762340  2.185267e-02     0.6580162   0.02265758
-    ##   2:    2      0.9256910  1.491855e-02     0.6978822   0.03303216
-    ##   3:    3      0.9435858  1.177184e-02     0.7171118   0.03284365
-    ##   4:    4      0.9571916  7.044485e-03     0.7307550   0.02742069
-    ##   5:    5      0.9661464  4.860218e-03     0.7323124   0.02729348
-    ##   6:    6      0.9752776  2.738814e-03     0.7324938   0.03234968
-    ##   7:    7      0.9794378  2.664673e-03     0.7343142   0.03559604
-    ##   8:    8      0.9843982  1.390471e-03     0.7385684   0.03253491
-    ##   9:    9      0.9882528  2.042404e-03     0.7394500   0.03423873
-    ##  10:   10      0.9898840  1.974364e-03     0.7421188   0.03281112
-    ##  11:   11      0.9918168  1.737771e-03     0.7410726   0.03206054
-    ##  12:   12      0.9939120  1.189890e-03     0.7400946   0.03592229
-    ##  13:   13      0.9953750  1.440311e-03     0.7411984   0.03427898
-    ##  14:   14      0.9961618  1.329347e-03     0.7393746   0.03302222
-    ##  15:   15      0.9969956  1.253070e-03     0.7418060   0.03285691
-    ##  16:   16      0.9979236  8.485278e-04     0.7384432   0.03448122
-    ##  17:   17      0.9984606  7.673465e-04     0.7382628   0.03515276
-    ##  18:   18      0.9988074  6.316716e-04     0.7346172   0.03344682
-    ##  19:   19      0.9991320  5.264299e-04     0.7327468   0.03470789
-    ##  20:   20      0.9993914  4.664833e-04     0.7305698   0.03745883
-    ##  21:   21      0.9995950  4.097917e-04     0.7304446   0.03702243
-    ##  22:   22      0.9996342  3.469037e-04     0.7315900   0.03667924
-    ##  23:   23      0.9997920  2.372712e-04     0.7306140   0.03562034
-    ##  24:   24      0.9998878  1.442087e-04     0.7302616   0.03626252
-    ##  25:   25      0.9999046  1.405185e-04     0.7291532   0.03844556
-    ##  26:   26      0.9999574  7.698208e-05     0.7300776   0.03623610
-    ##  27:   27      0.9999510  9.800000e-05     0.7315418   0.03291582
-    ##  28:   28      0.9999574  8.520000e-05     0.7313452   0.03238780
-    ##  29:   29      0.9999804  3.920000e-05     0.7320854   0.03103080
-    ##  30:   30      0.9999804  3.920000e-05     0.7309012   0.03215004
-    ##  31:   31      0.9999902  1.960000e-05     0.7293850   0.03315028
-    ##  32:   32      0.9999934  1.320000e-05     0.7318970   0.03418378
-    ##  33:   33      0.9999968  6.399992e-06     0.7298188   0.03341481
-    ##  34:   34      0.9999968  6.399992e-06     0.7297780   0.03374112
-    ##  35:   35      1.0000000  0.000000e+00     0.7283594   0.03396951
-    ##  36:   36      1.0000000  0.000000e+00     0.7295552   0.03539885
-    ##  37:   37      1.0000000  0.000000e+00     0.7278628   0.03685791
-    ##  38:   38      1.0000000  0.000000e+00     0.7291438   0.03621354
-    ##  39:   39      1.0000000  0.000000e+00     0.7279410   0.03761495
-    ##  40:   40      1.0000000  0.000000e+00     0.7279054   0.03740064
-    ##  41:   41      1.0000000  0.000000e+00     0.7279928   0.03818103
-    ##  42:   42      1.0000000  0.000000e+00     0.7278168   0.03947078
-    ##  43:   43      1.0000000  0.000000e+00     0.7278476   0.03887517
-    ##  44:   44      1.0000000  0.000000e+00     0.7282474   0.03855478
-    ##  45:   45      1.0000000  0.000000e+00     0.7272380   0.03880652
-    ##  46:   46      1.0000000  0.000000e+00     0.7269382   0.03855014
-    ##  47:   47      1.0000000  0.000000e+00     0.7277986   0.03955479
-    ##  48:   48      1.0000000  0.000000e+00     0.7273044   0.04061051
-    ##  49:   49      1.0000000  0.000000e+00     0.7284070   0.04107007
-    ##  50:   50      1.0000000  0.000000e+00     0.7279014   0.03987111
-    ##  51:   51      1.0000000  0.000000e+00     0.7290808   0.04146574
-    ##  52:   52      1.0000000  0.000000e+00     0.7290724   0.04033918
-    ##  53:   53      1.0000000  0.000000e+00     0.7284368   0.04039918
-    ##  54:   54      1.0000000  0.000000e+00     0.7274558   0.04034629
-    ##  55:   55      1.0000000  0.000000e+00     0.7259592   0.04075667
-    ##  56:   56      1.0000000  0.000000e+00     0.7251238   0.04091206
-    ##  57:   57      1.0000000  0.000000e+00     0.7250722   0.04229203
-    ##  58:   58      1.0000000  0.000000e+00     0.7248904   0.04184576
-    ##  59:   59      1.0000000  0.000000e+00     0.7249170   0.04218678
-    ##  60:   60      1.0000000  0.000000e+00     0.7234452   0.04191066
-    ##  61:   61      1.0000000  0.000000e+00     0.7226818   0.04088573
-    ##  62:   62      1.0000000  0.000000e+00     0.7232264   0.03983030
-    ##  63:   63      1.0000000  0.000000e+00     0.7234276   0.04005534
-    ##  64:   64      1.0000000  0.000000e+00     0.7232226   0.04072588
-    ##  65:   65      1.0000000  0.000000e+00     0.7233120   0.04082934
-    ##  66:   66      1.0000000  0.000000e+00     0.7218568   0.04081874
-    ##  67:   67      1.0000000  0.000000e+00     0.7213112   0.04106169
-    ##  68:   68      1.0000000  0.000000e+00     0.7213256   0.04270006
-    ##  69:   69      1.0000000  0.000000e+00     0.7224796   0.04121374
-    ##  70:   70      1.0000000  0.000000e+00     0.7219188   0.04207946
-    ##  71:   71      1.0000000  0.000000e+00     0.7228904   0.04230626
-    ##  72:   72      1.0000000  0.000000e+00     0.7226850   0.04256577
-    ##  73:   73      1.0000000  0.000000e+00     0.7224414   0.04273112
-    ##  74:   74      1.0000000  0.000000e+00     0.7227526   0.04235263
-    ##  75:   75      1.0000000  0.000000e+00     0.7225510   0.04237833
-    ##  76:   76      1.0000000  0.000000e+00     0.7223168   0.04318462
-    ##  77:   77      1.0000000  0.000000e+00     0.7232590   0.04354138
-    ##  78:   78      1.0000000  0.000000e+00     0.7225796   0.04269688
-    ##  79:   79      1.0000000  0.000000e+00     0.7219136   0.04202471
-    ##  80:   80      1.0000000  0.000000e+00     0.7223094   0.04347443
-    ##  81:   81      1.0000000  0.000000e+00     0.7223396   0.04244635
-    ##  82:   82      1.0000000  0.000000e+00     0.7224142   0.04226780
-    ##  83:   83      1.0000000  0.000000e+00     0.7233508   0.04216298
-    ##  84:   84      1.0000000  0.000000e+00     0.7230538   0.04241572
-    ##  85:   85      1.0000000  0.000000e+00     0.7222412   0.04256568
-    ##  86:   86      1.0000000  0.000000e+00     0.7225732   0.04249713
-    ##  87:   87      1.0000000  0.000000e+00     0.7229574   0.04268986
-    ##  88:   88      1.0000000  0.000000e+00     0.7249694   0.04365341
-    ##  89:   89      1.0000000  0.000000e+00     0.7237858   0.04422944
-    ##  90:   90      1.0000000  0.000000e+00     0.7234560   0.04449601
-    ##  91:   91      1.0000000  0.000000e+00     0.7233722   0.04490789
-    ##  92:   92      1.0000000  0.000000e+00     0.7235970   0.04405967
-    ##  93:   93      1.0000000  0.000000e+00     0.7226678   0.04426812
-    ##  94:   94      1.0000000  0.000000e+00     0.7230026   0.04411744
-    ##  95:   95      1.0000000  0.000000e+00     0.7228838   0.04384978
-    ##  96:   96      1.0000000  0.000000e+00     0.7226006   0.04301557
-    ##  97:   97      1.0000000  0.000000e+00     0.7228552   0.04421811
-    ##  98:   98      1.0000000  0.000000e+00     0.7221188   0.04339696
-    ##  99:   99      1.0000000  0.000000e+00     0.7214916   0.04300183
-    ## 100:  100      1.0000000  0.000000e+00     0.7223730   0.04405756
-    ##      iter train_auc_mean train_auc_std test_auc_mean test_auc_std
+![](gbm_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
 
 ``` r
-#first default - model training
-xgb1 <- xgb.train(params = params, 
-                   data = dtrain, 
-                   nrounds = 100, 
-                   watchlist = list(val=dtest,train=dtrain), 
-                   print.every.n = 10, 
-                   early.stop.round = 10, maximize = F , eval_metric = "auc")
+xgb_tune$bestTune
 ```
 
-    ## Warning: 'print.every.n' is deprecated.
-    ## Use 'print_every_n' instead.
-    ## See help("Deprecated") and help("xgboost-deprecated").
-
-    ## Warning: 'early.stop.round' is deprecated.
-    ## Use 'early_stopping_rounds' instead.
-    ## See help("Deprecated") and help("xgboost-deprecated").
-
-    ## [1]  val-auc:0.714436    train-auc:0.882343 
-    ## Multiple eval metrics are present. Will use train_auc for early stopping.
-    ## Will train until train_auc hasn't improved in 10 rounds.
-    ## 
-    ## [11] val-auc:0.742403    train-auc:0.987731 
-    ## Stopping. Best iteration:
-    ## [1]  val-auc:0.714436    train-auc:0.882343
+    ##    nrounds max_depth  eta gamma colsample_bytree min_child_weight
+    ## 87     250         2 0.05     0                1                1
+    ##    subsample
+    ## 87         1
 
 ``` r
+xgb_tune$results[which.max(xgb_tune$results$ROC),]
+```
+
+    ##     eta max_depth gamma colsample_bytree min_child_weight subsample
+    ## 87 0.05         2     0                1                1         1
+    ##    nrounds       ROC      Sens      Spec      ROCSD    SensSD     SpecSD
+    ## 87     250 0.7764736 0.8877391 0.4307141 0.04553338 0.0409877 0.01537115
+
+4.2 Step 2: Maximum Depth and Minimum Child Weight After fixing the
+learning rate to 0.05 and we’ll also set maximum depth to 3 +-1 (or +2
+if max\_depth == 2) to experiment a bit around the suggested best tune
+in previous step. Then, well fix maximum depth and minimum child weight:
+
+``` r
+set.seed(1)
+
+tune_grid2 <- expand.grid(
+  nrounds = seq(from = 50, to = nrounds, by = 50),
+  eta = xgb_tune$bestTune$eta,
+  max_depth = ifelse(xgb_tune$bestTune$max_depth == 2,
+    c(xgb_tune$bestTune$max_depth:4),
+    xgb_tune$bestTune$max_depth - 1:xgb_tune$bestTune$max_depth + 1),
+  gamma = 0,
+  colsample_bytree = 1,
+  min_child_weight = c(1, 2, 3),
+  subsample = 1
+)
+
+xgb_tune2 <- caret::train(
+  x = cog_train[3:10],
+  y = cog_train$cdr,
+  metric = "ROC",
+  trControl = tune_control,
+  tuneGrid = tune_grid2,
+  method = "xgbTree",
+  verbose = TRUE
+)
+```
+
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+
+``` r
+tuneplot(xgb_tune2)
+```
+
+![](gbm_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+
+``` r
+xgb_tune2$bestTune
+```
+
+    ##    nrounds max_depth  eta gamma colsample_bytree min_child_weight
+    ## 26     300         2 0.05     0                1                2
+    ##    subsample
+    ## 26         1
+
+``` r
+xgb_tune2$results[which.max(xgb_tune2$results$ROC),]
+```
+
+    ##     eta max_depth gamma colsample_bytree min_child_weight subsample
+    ## 26 0.05         2     0                1                2         1
+    ##    nrounds       ROC      Sens      Spec      ROCSD     SensSD     SpecSD
+    ## 26     300 0.7781286 0.8877531 0.4506146 0.04221574 0.04141497 0.02090931
+
+4.3 Step 3: Column and Row Sampling Based on this, we can fix minimum
+child weight to 2 and maximum depth to 2. Next, we’ll try different
+values for row and column sampling:
+
+``` r
+set.seed(1)
+
+tune_grid3 <- expand.grid(
+  nrounds = seq(from = 50, to = nrounds, by = 50),
+  eta = xgb_tune$bestTune$eta,
+  max_depth = xgb_tune2$bestTune$max_depth,
+  gamma = 0,
+  colsample_bytree = c(0.4, 0.6, 0.8, 1.0),
+  min_child_weight = xgb_tune2$bestTune$min_child_weight,
+  subsample = c(0.5, 0.75, 1.0)
+)
+
+xgb_tune3 <- caret::train(
+  x = cog_train[3:10],
+  y = cog_train$cdr,
+  metric = "ROC",
+  trControl = tune_control,
+  tuneGrid = tune_grid3,
+  method = "xgbTree",
+  verbose = TRUE
+)
+```
+
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+
+``` r
+tuneplot(xgb_tune3, probs = .5)
+```
+
+![](gbm_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+
+``` r
+xgb_tune3$bestTune
+```
+
+    ##     nrounds max_depth  eta gamma colsample_bytree min_child_weight
+    ## 145     250         2 0.05     0              0.8                2
+    ##     subsample
+    ## 145      0.75
+
+``` r
+xgb_tune3$results[which.max(xgb_tune3$results$ROC),]
+```
+
+    ##      eta max_depth gamma colsample_bytree min_child_weight subsample
+    ## 145 0.05         2     0              0.8                2      0.75
+    ##     nrounds       ROC      Sens      Spec      ROCSD     SensSD     SpecSD
+    ## 145     250 0.7848385 0.8813015 0.4206907 0.04569922 0.04171376 0.01924689
+
+4.4 Step 4: Gamma Next, we again pick the best values from previous
+step, and now will see whether changing the gamma has any effect on the
+model fit:
+
+``` r
+set.seed(1)
+tune_grid4 <- expand.grid(
+  nrounds = seq(from = 50, to = nrounds, by = 50),
+  eta = xgb_tune$bestTune$eta,
+  max_depth = xgb_tune2$bestTune$max_depth,
+  gamma = c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0),
+  colsample_bytree = xgb_tune3$bestTune$colsample_bytree,
+  min_child_weight = xgb_tune2$bestTune$min_child_weight,
+  subsample = xgb_tune3$bestTune$subsample
+)
+
+xgb_tune4 <- caret::train(
+  x = cog_train[3:10],
+  y = cog_train$cdr,
+  metric = "ROC",
+  trControl = tune_control,
+  tuneGrid = tune_grid4,
+  method = "xgbTree",
+  verbose = TRUE
+)
+```
+
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+
+``` r
+tuneplot(xgb_tune4)
+```
+
+    ## Warning: The shape palette can deal with a maximum of 6 discrete values
+    ## because more than 6 becomes difficult to discriminate; you have 7.
+    ## Consider specifying shapes manually if you must have them.
+
+    ## Warning: Removed 20 rows containing missing values (geom_point).
+
+![](gbm_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+
+``` r
+xgb_tune4$results[which.max(xgb_tune4$results$ROC),]
+```
+
+    ##     eta max_depth gamma colsample_bytree min_child_weight subsample
+    ## 65 0.05         2   0.5              0.8                2      0.75
+    ##    nrounds       ROC      Sens      Spec      ROCSD     SensSD     SpecSD
+    ## 65     250 0.7843025 0.8769865 0.4307141 0.04954639 0.04491103 0.01537115
+
+4.5 Step 5: Reducing the Learning Rate
+
+``` r
+set.seed(1)
+
+tune_grid5 <- expand.grid(
+  nrounds = seq(from = 100, to = 10000, by = 100),
+  eta = c(0.01, 0.015, 0.025, 0.05, 0.1),
+  max_depth = xgb_tune2$bestTune$max_depth,
+  gamma = xgb_tune4$bestTune$gamma,
+  colsample_bytree = xgb_tune3$bestTune$colsample_bytree,
+  min_child_weight = xgb_tune2$bestTune$min_child_weight,
+  subsample = xgb_tune3$bestTune$subsample
+)
+
+xgb_tune5 <- caret::train(
+  x = cog_train[3:10],
+  y = cog_train$cdr,
+  metric = "ROC",
+  trControl = tune_control,
+  tuneGrid = tune_grid5,
+  method = "xgbTree",
+  verbose = TRUE
+)
+```
+
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+    
+    ## Warning: Setting row names on a tibble is deprecated.
+
+``` r
+tuneplot(xgb_tune5)
+```
+
+![](gbm_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+
+``` r
+xgb_tune5$results[which.max(xgb_tune5$results$ROC),]
+```
+
+    ##       eta max_depth gamma colsample_bytree min_child_weight subsample
+    ## 106 0.015         2   0.5              0.8                2      0.75
+    ##     nrounds       ROC     Sens      Spec      ROCSD     SensSD     SpecSD
+    ## 106     600 0.7853111 0.892124 0.4010097 0.05400295 0.05153976 0.01531253
+
+Final grid:
+
+``` r
+ctrl1 <- trainControl(method = "repeatedcv",
+                     repeats = 5,
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE) #because need predicted class probabilities to get ROC curve
+
+final_grid <- expand.grid(
+  nrounds = xgb_tune5$bestTune$nrounds,
+  eta = xgb_tune5$bestTune$eta,
+  max_depth = xgb_tune5$bestTune$max_depth,
+  gamma = xgb_tune5$bestTune$gamma,
+  colsample_bytree = xgb_tune5$bestTune$colsample_bytree,
+  min_child_weight = xgb_tune5$bestTune$min_child_weight,
+  subsample = xgb_tune5$bestTune$subsample)
+
+final_xbg = caret::train(
+ x = cog_train[3:10],
+  y = cog_train$cdr,
+   metric = "ROC",
+  trControl = ctrl1,
+  tuneGrid = final_grid,
+  method = "xgbTree",
+  verbose = TRUE
+)
+
+final_xbg
+
+saveRDS(final_xbg, "./data/xgboost.RDS")
+```
+
+\#xg boost test pred
+
+``` r
+final_xbg = readRDS("./data/xgboost.RDS")
+
 #model prediction on test data
-xgbpred_prob <- predict(xgb1, dtest)
-xgbpred <- ifelse (xgbpred_prob > 0.5,1,0)
+xgbpred <- predict(final_xbg, cog_test)
 
-xgbpred <- factor(xgbpred, levels = c("0", "1"))
-xgbpred <- forcats::fct_recode(xgbpred, "NonDementia" = "0", "Dementia" = "1")
-            
 confusionMatrix(xgbpred, reference = cog_test$cdr)
 ```
 
@@ -537,57 +873,140 @@ confusionMatrix(xgbpred, reference = cog_test$cdr)
     ## 
     ##              Reference
     ## Prediction    NonDementia Dementia
-    ##   NonDementia         212       71
-    ##   Dementia             19       30
-    ##                                          
-    ##                Accuracy : 0.7289         
-    ##                  95% CI : (0.6777, 0.776)
-    ##     No Information Rate : 0.6958         
-    ##     P-Value [Acc > NIR] : 0.1043         
-    ##                                          
-    ##                   Kappa : 0.2512         
-    ##                                          
-    ##  Mcnemar's Test P-Value : 7.621e-08      
-    ##                                          
-    ##             Sensitivity : 0.9177         
-    ##             Specificity : 0.2970         
-    ##          Pos Pred Value : 0.7491         
-    ##          Neg Pred Value : 0.6122         
-    ##              Prevalence : 0.6958         
-    ##          Detection Rate : 0.6386         
-    ##    Detection Prevalence : 0.8524         
-    ##       Balanced Accuracy : 0.6074         
-    ##                                          
-    ##        'Positive' Class : NonDementia    
+    ##   NonDementia         211       60
+    ##   Dementia             20       41
+    ##                                           
+    ##                Accuracy : 0.759           
+    ##                  95% CI : (0.7093, 0.8041)
+    ##     No Information Rate : 0.6958          
+    ##     P-Value [Acc > NIR] : 0.006388        
+    ##                                           
+    ##                   Kappa : 0.3594          
+    ##                                           
+    ##  Mcnemar's Test P-Value : 1.299e-05       
+    ##                                           
+    ##             Sensitivity : 0.9134          
+    ##             Specificity : 0.4059          
+    ##          Pos Pred Value : 0.7786          
+    ##          Neg Pred Value : 0.6721          
+    ##              Prevalence : 0.6958          
+    ##          Detection Rate : 0.6355          
+    ##    Detection Prevalence : 0.8163          
+    ##       Balanced Accuracy : 0.6597          
+    ##                                           
+    ##        'Positive' Class : NonDementia     
     ## 
 
 ``` r
 #roc test
-roc_xboost_test <- roc(cog_test$cdr, xgbpred_prob)
+xgbpred_prob <- predict(final_xbg, cog_test, type = "prob")
+
+roc_xboost_test <- roc(cog_test$cdr, xgbpred_prob$Dementia)
 
 plot(roc_xboost_test, legacy.axes = TRUE, print.auc = TRUE) 
 plot(smooth(roc_xboost_test), col = 4, add = TRUE) 
 ```
 
-![](gbm_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+![](gbm_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 ``` r
 #roc train
-xgbpred_train_prob <- predict(xgb1, dtrain)
-
-roc_xboost_train <- roc(cog_train$cdr, xgbpred_train_prob)
-
+xgbpred_train_prob <- predict(final_xbg, cog_train, type = "prob")
+roc_xboost_train <- roc(cog_train$cdr, xgbpred_train_prob$Dementia)
 plot(roc_xboost_train, legacy.axes = TRUE, print.auc = TRUE) 
 plot(smooth(roc_xboost_train), col = 4, add = TRUE) 
 ```
 
-![](gbm_files/figure-gfm/unnamed-chunk-11-2.png)<!-- -->
+![](gbm_files/figure-gfm/unnamed-chunk-17-2.png)<!-- -->
 
 ``` r
 #importance
 mat <- xgb.importance(feature_names = colnames(cog_train[3:10]),
-                      model = xgb1)
+                      model = final_xbg$finalModel)
 xgb.plot.importance(importance_matrix = mat) 
 ```
 
-![](gbm_files/figure-gfm/unnamed-chunk-11-3.png)<!-- -->
+![](gbm_files/figure-gfm/unnamed-chunk-17-3.png)<!-- -->
+
+# resamples
+
+``` r
+library(caret)
+
+gbm_fit = readRDS("./data/gbm_fit_3.RDS")
+xgb_fit = readRDS("./data/xgboost.RDS")
+svm_fit = readRDS("./data/SVM.RDS")
+rf_fit = readRDS("./data/rf.fit.RDS")
+knn_fit = readRDS("./data/knn.RDS")
+nb_fit  = readRDS("./data/nb.RDS")
+logit_fit  = readRDS("./data/logit.RDS")
+lda_fit = readRDS("./data/lda.RDS")
+cart_fit = readRDS("./data/cart.RDS")
+
+set.seed(2)
+resamp <- resamples(list(xgboost = xgb_fit,
+                         gbm = gbm_fit,
+                        svm = svm_fit,
+                         rf = rf_fit,
+                         knn = knn_fit,
+                         nb = nb_fit,
+                         logistic = logit_fit,
+                         lda = lda_fit, 
+                         cart = cart_fit))
+bwplot(resamp)
+```
+
+![](gbm_files/figure-gfm/unnamed-chunk-18-1.png)<!-- -->
+
+``` r
+ggplot(resamp)
+```
+
+![](gbm_files/figure-gfm/unnamed-chunk-18-2.png)<!-- -->
+
+``` r
+summary(resamp)
+```
+
+    ## 
+    ## Call:
+    ## summary.resamples(object = resamp)
+    ## 
+    ## Models: xgboost, gbm, svm, rf, knn, nb, logistic, lda, cart 
+    ## Number of resamples: 50 
+    ## 
+    ## ROC 
+    ##               Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+    ## xgboost  0.6712766 0.7437500 0.7900362 0.7912418 0.8371151 0.9180851    0
+    ## gbm      0.6565217 0.7541149 0.7840426 0.7873418 0.8127717 0.8945652    0
+    ## svm      0.6391304 0.7690217 0.8090426 0.7995225 0.8378585 0.9420290    0
+    ## rf       0.5952381 0.7281337 0.7820652 0.7653794 0.8130809 0.8663043    0
+    ## knn      0.6423913 0.7260870 0.7583372 0.7645090 0.8029382 0.8877660    0
+    ## nb       0.5936170 0.6842391 0.7331522 0.7318003 0.7739130 0.8797872    0
+    ## logistic 0.6403242 0.7613437 0.7947981 0.7998271 0.8369565 0.9148936    0
+    ## lda      0.6826087 0.7653339 0.8006470 0.7999751 0.8382979 0.8840580    0
+    ## cart     0.5760870 0.6615815 0.6895120 0.6924352 0.7199728 0.8923913    0
+    ## 
+    ## Sens 
+    ##               Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+    ## xgboost  0.8085106 0.8770814 0.9130435 0.9050139 0.9347826 0.9787234    0
+    ## gbm      0.7391304 0.8556892 0.9130435 0.8941443 0.9347826 0.9782609    0
+    ## svm      0.8260870 0.8770814 0.9130435 0.9109898 0.9361702 1.0000000    0
+    ## rf       0.7021277 0.8510638 0.8913043 0.8761055 0.9130435 0.9574468    0
+    ## knn      0.8936170 0.9782609 0.9782609 0.9766975 1.0000000 1.0000000    0
+    ## nb       0.9148936 0.9412581 0.9569843 0.9632932 0.9787234 1.0000000    0
+    ## logistic 0.8478261 0.8695652 0.8936170 0.9041351 0.9347826 0.9787234    0
+    ## lda      0.8043478 0.8913043 0.9130435 0.9079741 0.9347826 0.9787234    0
+    ## cart     0.7173913 0.7915125 0.8388067 0.8359389 0.8695652 0.9565217    0
+    ## 
+    ## Spec 
+    ##                Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+    ## xgboost  0.19047619 0.3577381 0.4500000 0.4405714 0.5000000 0.6000000    0
+    ## gbm      0.20000000 0.3577381 0.4500000 0.4449048 0.5000000 0.7000000    0
+    ## svm      0.25000000 0.4000000 0.4500000 0.4545714 0.5000000 0.6190476    0
+    ## rf       0.20000000 0.3500000 0.4392857 0.4218095 0.5000000 0.6000000    0
+    ## knn      0.04761905 0.0952381 0.1500000 0.1489524 0.2000000 0.3500000    0
+    ## nb       0.00000000 0.1000000 0.1500000 0.1490476 0.2000000 0.3333333    0
+    ## logistic 0.35000000 0.4285714 0.5000000 0.4899524 0.5500000 0.6500000    0
+    ## lda      0.25000000 0.4000000 0.4500000 0.4672381 0.5500000 0.6666667    0
+    ## cart     0.23809524 0.4000000 0.4500000 0.4596190 0.5434524 0.8500000    0
