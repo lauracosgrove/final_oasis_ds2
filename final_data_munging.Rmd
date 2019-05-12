@@ -236,3 +236,102 @@ table(cog_data$cdr, cog_data$risk_e4)
 ```
 
 From this, it appears that the presence of risk alleles may be more important that the protective alleles as a risk factor for dementia. Further, we note small differences in cortical volumes (aside from total intracranial volume, which is a corrective factor not strictly of interest): white matter volume, cortex volume, and grey volume seem slightly smaller in the dementia group.
+
+#kmeans 
+
+```{r}
+library(factoextra) #provides visualization tools for clustering and PCA (ggplot based)
+library(gridExtra)
+library(corrplot)
+library(RColorBrewer)  #nice color palettes
+library(gplots) #heatmap for better visualization
+library(caret)
+
+cog_data <- readRDS("./data/cog_data_preproc.RDS")
+
+set.seed(1)
+train_index <- createDataPartition(cog_data$cdr, p = 2/3, list = FALSE, times = 1)
+cog_train <- cog_data[train_index,] 
+
+set.seed(12)
+preProc_fn <- preProcess(cog_train[3:10], 
+           method = c("center", "scale", "knnImpute"),
+          k = 5,
+          knnSummary = mean,
+          verbose = TRUE)
+
+cog_data[3:10] <- predict(preProc_fn, cog_data[3:10]) 
+
+# select k through silhouette
+fviz_nbclust(cog_data[3:10],
+             FUNcluster = kmeans,
+             method = "silhouette")
+
+set.seed(1) #because there is randomness in the results
+km <- kmeans(cog_data[3:10] , centers = 3, nstart = 20) #because the previous results gave us 3 as the best K; nstart = 20 so multiple random starts
+
+km_vis <- fviz_cluster(list(data = cog_data[3:10], cluster = km$cluster), 
+                        ellipse.type = "convex", geom = "point", 
+                        palette = "Dark2") + labs(title = "K-means") 
+
+km_vis
+
+cog_data %>% 
+  mutate(cluster_membership = factor(km$cluster)) %>% 
+  group_by(cluster_membership) %>% 
+  count(cdr) %>% 
+  spread(cdr, n) %>% 
+  mutate('Cluster Percent Dementia' = Dementia/(NonDementia+ Dementia))
+
+#select k through gap
+
+fviz_nbclust(cog_data[3:10],
+             FUNcluster = kmeans,
+             method = "gap")
+
+set.seed(1) #because there is randomness in the results
+km_2 <- kmeans(cog_data[3:10] , centers = 6, nstart = 20) 
+
+km_vis <- fviz_cluster(list(data = cog_data[3:10], cluster = km$cluster), 
+                        ellipse.type = "convex", geom = "point", 
+                        palette = "Dark2") + labs(title = "K-means") 
+
+km_vis
+
+cog_data %>% 
+  mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  group_by(cluster_membership) %>% 
+  count(cdr) %>% 
+  spread(cdr, n) %>% 
+  mutate('Cluster Percent Dementia' = Dementia/(NonDementia + Dementia))
+
+#Plots on brain volume show the clustering algorithm found variability not explained by dementia status.
+cog_data %>% 
+   mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  ggplot(aes(y = rh_cortical_white_matter_vol, x = cluster_membership, fill = cdr)) +
+  coord_flip() +
+  geom_boxplot() + theme_bw() + scale_fill_viridis_d()
+
+cog_data %>% 
+   mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  ggplot(aes(y = lh_cortex_vol, x = cluster_membership, fill = cdr)) +
+  coord_flip() +
+  geom_boxplot() + theme_bw() + scale_fill_viridis_d()
+
+cog_data %>% 
+   mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  ggplot(aes(y = intra_cranial_vol, x = cluster_membership, fill = cdr)) +
+  coord_flip() +
+  geom_boxplot() + theme_bw() + scale_fill_viridis_d()
+
+#not terribly useful plot of cluster means of standardized counts of e2/e4 alleles  by dementia status
+cog_data %>% 
+   mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  group_by(cluster_membership, cdr) %>% 
+  count(mean_risk = mean(risk_e4), mean_protective = mean(protective_e2)) %>% 
+  ggplot(aes(x = mean_risk, y = mean_protective, size = n, color = cdr)) +
+  geom_point(alpha = 0.9) + theme_bw()
+
+
+```
+

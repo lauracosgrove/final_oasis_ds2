@@ -36,7 +36,7 @@ community through free distribution and compilation. The OASIS-3 release
 is a retrospective compilation of longitudinal neuroimaging, clinical,
 cognitive, and biomarker data of 1098 participants in several research
 studies at the Charles F. and Joanne Knight Alzheimer’s Disease Research
-Center at Washington University i n St. Louis over the course of 30
+Center at Washington University in St. Louis over the course of 30
 years. Of included participants, 609 are cognitively normal and 489 are
 in various stages of cognitive decline, with ages ranging from 42 - 95
 years.
@@ -299,7 +299,7 @@ cog_data <- last_data %>%
   mutate(cdr = factor(case_when(cdr == 0 ~ 0,
                                 cdr > 0 ~ 1), 
                       levels = c(0, 1),
-                      labels = c("Non-Dementia", "Dementia"))) %>% 
+                      labels = c("NonDementia", "Dementia"))) %>% 
   select(-adrc_adrcclinicaldata_id, -fs_fsdata_id, -starts_with("dx"), -starts_with("day")) %>% 
   mutate(age = age_at_entry + year_round) %>% 
   select(subject, age, year_round, cdr, mmse, apoe, height, weight, intra_cranial_vol:cortical_white_matter_vol) 
@@ -326,6 +326,7 @@ Finally, write our csv:
 
 ``` r
 write_csv(cog_data, "./data/cog_data")
+saveRDS(cog_data, "./data/cog_data.RDS")
 ```
 
 ## Plots
@@ -361,23 +362,219 @@ cog_data %>%
 table(cog_data$cdr, cog_data$protective_e2)
 ```
 
-    ##               
-    ##                  0   1   2
-    ##   Non-Dementia 569 103   6
-    ##   Dementia     257  36   2
+    ##              
+    ##                 0   1   2
+    ##   NonDementia 569 103   6
+    ##   Dementia    257  36   2
 
 ``` r
 table(cog_data$cdr, cog_data$risk_e4)
 ```
 
-    ##               
-    ##                  0   1   2
-    ##   Non-Dementia 451 200  27
-    ##   Dementia     126 144  25
+    ##              
+    ##                 0   1   2
+    ##   NonDementia 451 200  27
+    ##   Dementia    126 144  25
 
 From this, it appears that the presence of risk alleles may be more
 important that the protective alleles as a risk factor for dementia.
 Further, we note small differences in cortical volumes (aside from total
 intracranial volume, which is a corrective factor not strictly of
 interest): white matter volume, cortex volume, and grey volume seem
-slightly smaller in the dementia group.
+slightly smaller in the dementia
+group.
+
+\#kmeans
+
+``` r
+library(factoextra) #provides visualization tools for clustering and PCA (ggplot based)
+```
+
+    ## Welcome! Related Books: `Practical Guide To Cluster Analysis in R` at https://goo.gl/13EFCZ
+
+``` r
+library(gridExtra)
+```
+
+    ## 
+    ## Attaching package: 'gridExtra'
+
+    ## The following object is masked from 'package:dplyr':
+    ## 
+    ##     combine
+
+``` r
+library(corrplot)
+```
+
+    ## corrplot 0.84 loaded
+
+``` r
+library(RColorBrewer)  #nice color palettes
+library(gplots) #heatmap for better visualization
+```
+
+    ## 
+    ## Attaching package: 'gplots'
+
+    ## The following object is masked from 'package:stats':
+    ## 
+    ##     lowess
+
+``` r
+library(caret)
+```
+
+    ## Loading required package: lattice
+
+    ## 
+    ## Attaching package: 'caret'
+
+    ## The following object is masked from 'package:purrr':
+    ## 
+    ##     lift
+
+``` r
+cog_data <- readRDS("./data/cog_data_preproc.RDS")
+
+set.seed(1)
+train_index <- createDataPartition(cog_data$cdr, p = 2/3, list = FALSE, times = 1)
+cog_train <- cog_data[train_index,] 
+
+set.seed(12)
+preProc_fn <- preProcess(cog_train[3:10], 
+           method = c("center", "scale", "knnImpute"),
+          k = 5,
+          knnSummary = mean,
+          verbose = TRUE)
+```
+
+    ## Calculating 8 means for centering
+    ## Calculating 8 standard deviations for scaling
+
+``` r
+cog_data[3:10] <- predict(preProc_fn, cog_data[3:10]) 
+
+# select k through silhouette
+fviz_nbclust(cog_data[3:10],
+             FUNcluster = kmeans,
+             method = "silhouette")
+```
+
+![](final_data_munging_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+``` r
+set.seed(1) #because there is randomness in the results
+km <- kmeans(cog_data[3:10] , centers = 3, nstart = 20) #because the previous results gave us 3 as the best K; nstart = 20 so multiple random starts
+
+km_vis <- fviz_cluster(list(data = cog_data[3:10], cluster = km$cluster), 
+                        ellipse.type = "convex", geom = "point", 
+                        palette = "Dark2") + labs(title = "K-means") 
+
+km_vis
+```
+
+![](final_data_munging_files/figure-gfm/unnamed-chunk-7-2.png)<!-- -->
+
+``` r
+cog_data %>% 
+  mutate(cluster_membership = factor(km$cluster)) %>% 
+  group_by(cluster_membership) %>% 
+  count(cdr) %>% 
+  spread(cdr, n) %>% 
+  mutate('Cluster Percent Dementia' = Dementia/(NonDementia+ Dementia))
+```
+
+    ## # A tibble: 3 x 4
+    ## # Groups:   cluster_membership [3]
+    ##   cluster_membership NonDementia Dementia `Cluster Percent Dementia`
+    ##   <fct>                    <int>    <int>                      <dbl>
+    ## 1 1                          244      105                      0.301
+    ## 2 2                          354      163                      0.315
+    ## 3 3                           96       35                      0.267
+
+``` r
+#select k through gap
+
+fviz_nbclust(cog_data[3:10],
+             FUNcluster = kmeans,
+             method = "gap")
+```
+
+![](final_data_munging_files/figure-gfm/unnamed-chunk-7-3.png)<!-- -->
+
+``` r
+set.seed(1) #because there is randomness in the results
+km_2 <- kmeans(cog_data[3:10] , centers = 6, nstart = 20) 
+
+km_vis <- fviz_cluster(list(data = cog_data[3:10], cluster = km$cluster), 
+                        ellipse.type = "convex", geom = "point", 
+                        palette = "Dark2") + labs(title = "K-means") 
+
+km_vis
+```
+
+![](final_data_munging_files/figure-gfm/unnamed-chunk-7-4.png)<!-- -->
+
+``` r
+cog_data %>% 
+  mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  group_by(cluster_membership) %>% 
+  count(cdr) %>% 
+  spread(cdr, n) %>% 
+  mutate('Cluster Percent Dementia' = Dementia/(NonDementia + Dementia))
+```
+
+    ## # A tibble: 6 x 4
+    ## # Groups:   cluster_membership [6]
+    ##   cluster_membership NonDementia Dementia `Cluster Percent Dementia`
+    ##   <fct>                    <int>    <int>                      <dbl>
+    ## 1 1                           90       58                      0.392
+    ## 2 2                           99       96                      0.492
+    ## 3 3                          112       67                      0.374
+    ## 4 4                           90       29                      0.244
+    ## 5 5                          128       25                      0.163
+    ## 6 6                          175       28                      0.138
+
+``` r
+#Plots on brain volume show the clustering algorithm found variability not explained by dementia status.
+cog_data %>% 
+   mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  ggplot(aes(y = rh_cortical_white_matter_vol, x = cluster_membership, fill = cdr)) +
+  coord_flip() +
+  geom_boxplot() + theme_bw() + scale_fill_viridis_d()
+```
+
+![](final_data_munging_files/figure-gfm/unnamed-chunk-7-5.png)<!-- -->
+
+``` r
+cog_data %>% 
+   mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  ggplot(aes(y = lh_cortex_vol, x = cluster_membership, fill = cdr)) +
+  coord_flip() +
+  geom_boxplot() + theme_bw() + scale_fill_viridis_d()
+```
+
+![](final_data_munging_files/figure-gfm/unnamed-chunk-7-6.png)<!-- -->
+
+``` r
+cog_data %>% 
+   mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  ggplot(aes(y = intra_cranial_vol, x = cluster_membership, fill = cdr)) +
+  coord_flip() +
+  geom_boxplot() + theme_bw() + scale_fill_viridis_d()
+```
+
+![](final_data_munging_files/figure-gfm/unnamed-chunk-7-7.png)<!-- -->
+
+``` r
+#not terribly useful plot of cluster means of standardized counts of e2/e4 alleles  by dementia status
+cog_data %>% 
+   mutate(cluster_membership = factor(km_2$cluster)) %>% 
+  group_by(cluster_membership, cdr) %>% 
+  count(mean_risk = mean(risk_e4), mean_protective = mean(protective_e2)) %>% 
+  ggplot(aes(x = mean_risk, y = mean_protective, size = n, color = cdr)) +
+  geom_point(alpha = 0.9) + theme_bw()
+```
+
+![](final_data_munging_files/figure-gfm/unnamed-chunk-7-8.png)<!-- -->
