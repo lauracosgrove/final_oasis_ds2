@@ -397,37 +397,3 @@ mat <- xgb.importance(feature_names = colnames(cog_train[3:10]),
 xgb.plot.importance(importance_matrix = mat) 
 
 ```
-
-
-# resamples
-
-```{r}
-library(caret)
-
-gbm_fit = readRDS("./data/gbm_fit_3.RDS")
-xgb_fit = readRDS("./data/xgboost.RDS")
-svm_fit = readRDS("./data/SVM.RDS")
-rf_fit = readRDS("./data/rf.fit.RDS")
-knn_fit = readRDS("./data/knn.RDS")
-nb_fit  = readRDS("./data/nb.RDS")
-logit_fit  = readRDS("./data/logit.RDS")
-lda_fit = readRDS("./data/lda.RDS")
-cart_fit = readRDS("./data/cart.RDS")
-
-set.seed(2)
-resamp <- resamples(list(xgboost = xgb_fit,
-                         gbm = gbm_fit,
-                        svm = svm_fit,
-                         rf = rf_fit,
-                         knn = knn_fit,
-                         nb = nb_fit,
-                         logistic = logit_fit,
-                         lda = lda_fit, 
-                         cart = cart_fit))
-bwplot(resamp)
-ggplot(resamp)
-summary(resamp)
-
-```
-
-

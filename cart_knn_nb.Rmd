@@ -119,4 +119,9 @@ plot(model.nb)
 model.nb$results[which.max(model.nb$results$ROC), ]
 ```
 
+```{r}
+saveRDS(knn_fit, "./data/knn.RDS")
+saveRDS(model.nb, "./data/nb.RDS")
+saveRDS(rpart_fit, "./data/cart.RDS")
+```
 
