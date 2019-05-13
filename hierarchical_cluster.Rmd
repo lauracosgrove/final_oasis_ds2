@@ -4,8 +4,10 @@ output: github_document
 ---
 
 ```{r}
+library(tidyverse)
 library(ISLR)
 library(factoextra)
+library(FunCluster)
 library(RColorBrewer)
 library(gplots)
 ```
@@ -15,11 +17,21 @@ cog_data <- readRDS("./data/cog_data_preproc.RDS")
 cog_train <- readRDS("./data/cog_train_preproc.RDS")
 cog_test <- readRDS("./data/cog_test_preproc.RDS")
 
+cog_data <- readRDS("./data/cog_data_preproc.RDS") %>%
+  dplyr::select(-subject) %>% 
+  na.omit() # omit rows with NA
+
 set.seed(1)
 
-sd.data <- scale(cog_train[3:10])
+sd.data <- scale(cog_data[, -1])
 
 hc.complete <- hclust(dist(sd.data), method = "complete")
+
+fviz_nbclust(cog_data[, -1],
+             FUNcluster = hcut,
+             k.max = 15,
+             method = "gap",
+             print.summary = TRUE)
 
 #8 clusters
 fviz_dend(hc.complete, k = 8,
