@@ -17,6 +17,39 @@ library(caret)
     ##   c.quosures     rlang
     ##   print.quosures rlang
 
+``` r
+library(tidyverse)
+```
+
+    ## Registered S3 method overwritten by 'rvest':
+    ##   method            from
+    ##   read_xml.response xml2
+
+    ## ── Attaching packages ────────────────────────────────────────────────────────────────────────────────────────────── tidyverse 1.2.1 ──
+
+    ## ✔ tibble  2.1.1       ✔ purrr   0.3.2  
+    ## ✔ tidyr   0.8.3       ✔ dplyr   0.8.0.1
+    ## ✔ readr   1.3.1       ✔ stringr 1.4.0  
+    ## ✔ tibble  2.1.1       ✔ forcats 0.4.0
+
+    ## ── Conflicts ───────────────────────────────────────────────────────────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ✖ dplyr::filter() masks stats::filter()
+    ## ✖ dplyr::lag()    masks stats::lag()
+    ## ✖ purrr::lift()   masks caret::lift()
+
+``` r
+library(pROC)
+```
+
+    ## Type 'citation("pROC")' for a citation.
+
+    ## 
+    ## Attaching package: 'pROC'
+
+    ## The following objects are masked from 'package:stats':
+    ## 
+    ##     cov, smooth, var
+
 # resamples
 
 ``` r
@@ -99,3 +132,55 @@ summary(resamp)
     ## cart     0.23809524 0.4000000 0.4500000 0.4596190 0.5434524 0.8500000    0
 
 Looks like logistic regression it is :)
+
+# test performance
+
+``` r
+cog_test <- readRDS("./data/cog_test_preproc.RDS")
+```
+
+``` r
+## Function
+
+confusionMatrix_fcn = function(fit) {
+  test_pred  <- predict(fit, cog_test, type = "raw")
+
+ matrix <- confusionMatrix(data = test_pred, 
+                reference = cog_test$cdr,
+                positive = "Dementia")
+ matrix
+}
+
+roc_fcn = function(fit) {
+test_pred_prob  <- predict(fit, cog_test, type = "prob")
+
+roc_test <- roc(cog_test$cdr, test_pred_prob$Dementia)
+ 
+roc_test$auc[1]
+}
+
+auc_list = list(xgboost = xgb_fit,
+                         gbm = gbm_fit,
+                        svm = svm_fit,
+                         rf = rf_fit,
+                         knn = knn_fit,
+                         nb = nb_fit,
+                         logistic = logit_fit,
+                         lda = lda_fit, 
+                         cart = cart_fit) %>%  map(roc_fcn) 
+```
+
+    ## Warning in FUN(X[[i]], ...): Numerical 0 probability for all classes with
+    ## observation 325
+
+``` r
+auc_df = tibble(models = resamp$models, auc = auc_list) %>% 
+  unnest()
+
+ggplot(resamp) + theme_minimal() + 
+  geom_point(data = auc_df, aes(y = auc, x = models), color = "green") + 
+  labs(title = "Cross-Validated AUC",
+       subtitle = "Test AUC in Green")
+```
+
+![](Final_Model_Selection_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
