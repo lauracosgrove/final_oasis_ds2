@@ -2,7 +2,7 @@
 title: "Simple Models"
 author: "Laura Cosgrove"
 date: "5/1/2019"
-output: html_document
+output: pdf_document
 ---
 
 The class of "simple", i.e., interpretable and inflexible, classification models can be thought to include: 
@@ -12,6 +12,8 @@ The class of "simple", i.e., interpretable and inflexible, classification models
 - Linear Discriminant Analysis
 
 ```{r}
+knitr::opts_chunk$set(eval = FALSE)
+
 library(tidyverse)
 library(caret)
 library(pROC)
@@ -20,7 +22,7 @@ library(RANN)
 
 # Variable Selection (Linear Combos, Zero Variance, Multicollinearity)
 
-```{r}
+```{r eval = FALSE}
 cog_data <- readRDS("./data/cog_data.RDS") %>% select(-mmse, -year_round, -sub_cort_gray_vol)
 
 ##Linear Combos
@@ -114,10 +116,37 @@ logit_fit <- train(x = cog_train[3:10],
                    metric = "ROC",
                    trControl = ctrl1)
 
+#library(recipes)
+
+#recipe(cdr ~ age + prod)
+
+names(cog_train)
+logit_fit_int <- train(cdr ~ age + protective_e2 + risk_e4 + intra_cranial_vol*lh_cortex_vol + intra_cranial_vol*rh_cortical_white_matter_vol + height + weight,
+                   data = cog_train,
+                   method = "glm",
+                   metric = "ROC",
+                   trControl = ctrl1)
+
+logit_fit_int2 <- train(cdr ~ age + protective_e2 + risk_e4 + intra_cranial_vol*lh_cortex_vol + intra_cranial_vol*rh_cortical_white_matter_vol + intra_cranial_vol*height,
+                   data = cog_train,
+                   method = "glm",
+                   metric = "ROC",
+                   trControl = ctrl1)
+
 
 logit_fit #Resampled AUC: 0.7998271 
 
 summary(logit_fit$finalModel) 
+
+logit_fit_int
+
+
+summary(logit_fit_int$finalModel) 
+logit_fit$finalModel %>% broom::glance()
+logit_fit_int$finalModel %>% broom::glance()
+logit_fit_int2$finalModel %>% broom::glance()
+summary(logit_fit_int2$finalModel) 
+
 
 train_pred_prob  <- predict(logit_fit, type = "prob")
 ```
@@ -139,18 +168,39 @@ null_dev <- broom::glance(logit_fit$finalModel) %>%
 test_stat = null_dev - dev
 pval = 1 - pchisq(test_stat, df = 9) #DOF = 664 - 655 
 pval #Reject, go with the larger model
+
+##Interaction vs no##
+dev2 <- logit_fit_int$finalModel %>% broom::glance() %>% 
+  pull(deviance)
+
+test_stat = dev - dev2
+pval = 1 - pchisq(test_stat, df = 2) #DOF = 654 - 656 
+pval #Reject, go with the larger model
+
+#but AIC is better
+
+logit_fit_int2
+
+dev3 <- logit_fit_int2$finalModel %>% broom::glance() %>% 
+  pull(deviance)
+
+test_stat = dev2 - dev3
+pval = 1 - pchisq(test_stat, df = 1) #DOF = 1
+pval #FTR, go with the smaller model
+
+
 ```
 
 ## Performance on test data
 
 ```{r}
-test_pred  <- predict(logit_fit, newdata = cog_test, type = "raw")
+test_pred  <- predict(logit_fit_int, newdata = cog_test, type = "raw")
 
 confusionMatrix(data = test_pred, 
                 reference = cog_test$cdr,
                 positive = "Dementia")
 
-test_pred_prob  <- predict(logit_fit, newdata = cog_test, type = "prob")
+test_pred_prob  <- predict(logit_fit_int, newdata = cog_test, type = "prob")
 
 roc_logit_test <- roc(cog_test$cdr, test_pred_prob$Dementia)
 
@@ -199,9 +249,16 @@ plot(smooth(roc_lda_test), col = 4, add = TRUE)
 # Logistic vs. LDA:
 
 ```{r}
-res <- resamples(list(logistic = logit_fit,
+res <- resamples(list(logistic = logit_fit_int,
                  lda = lda_fit)
                  )
 ggplot(res) + labs(title = "AUC Performance on Resampled Data") + theme_minimal()
+```
+
+
+```{r}
+saveRDS(logit_fit_int, "./data/logit_int.RDS")
+saveRDS(logit_fit, "./data/logit.RDS")
+saveRDS(lda_fit, "./data/lda.RDS")
 ```
 

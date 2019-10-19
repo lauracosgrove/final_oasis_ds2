@@ -2,10 +2,12 @@
 title: "CART, KNN, Naive Bayes"
 author: "Laura Cosgrove"
 date: "5/8/2019"
-output: github_document
+output: pdf_document
 ---
 
 ```{r}
+knitr::opts_chunk$set(eval = FALSE)
+
 library(tidyverse)
 library(caret)
 library(pROC)
@@ -59,10 +61,10 @@ confusionMatrix(data = test_pred_knn,
 
 test_pred_prob_knn  <- predict(knn_fit, newdata = cog_test, type = "prob")
 
-roc_logit_test <- roc(cog_test$cdr, test_pred_prob_knn$Dementia)
+roc_knn_test <- roc(cog_test$cdr, test_pred_prob_knn$Dementia)
 
-plot(roc_logit_test, legacy.axes = TRUE, print.auc = TRUE) 
-plot(smooth(roc_logit_test), col = 4, add = TRUE) 
+plot(roc_knn_test, legacy.axes = TRUE, print.auc = TRUE) 
+plot(smooth(roc_knn_test), col = 4, add = TRUE) 
 
 ```
 
@@ -85,10 +87,10 @@ cp_optimal <- rpart_fit$results %>% as.tibble() %>%
   select(cp, ROC, ROC_onesd) %>% 
   filter(cp >= cp[which.max(ROC)],
          ROC >= ROC_onesd[which.max(ROC)]) %>% 
-  summarize(cp_minRMSE = min(cp),
+  summarize(cp_maxROC = min(cp),
             cp_1se = max(cp))
 
-tree_min <- prune(rpart_fit$finalModel, cp = cp_optimal$cp_minRMSE)
+tree_min <- prune(rpart_fit$finalModel, cp = cp_optimal$cp_maxROC)
 tree_1se <- prune(rpart_fit$finalModel, cp = cp_optimal$cp_1se)
 
 

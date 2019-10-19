@@ -1,10 +1,10 @@
 ---
 title: "SVM"
-output: github_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(eval = FALSE)
 
 library(caret)
 library(e1071) # alternative to caret
@@ -28,6 +28,7 @@ linear.tune <- e1071::tune.svm(cdr~.,
                                kernel = "linear", 
                                cost = exp(seq(-5, 1, len = 20)))
 # summary(linear.tune)
+plot(linear.tune)
 
 best.linear <- linear.tune$best.model
 summary(best.linear)
@@ -94,7 +95,7 @@ svml.fit <- train(cdr~.,
                   data = train, 
                   method = "svmLinear2",
                   metric = "roc",
-                  tuneGrid = data.frame(cost = exp(seq(-5,1,len=20))),
+                  tuneGrid = data.frame(cost = exp(seq(1,7,len=20))),
                   trControl = ctrl)
 
 ggplot(svml.fit, highlight = TRUE)
@@ -141,3 +142,8 @@ confusionMatrix(data = pred.svmr,
 ```
 
 Looking at the test data performance, the SVM with linear kernel is better (higher accruacy).
+
+```{r}
+saveRDS(svml.fit, "./data/SVM.RDS")
+```
+

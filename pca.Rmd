@@ -1,10 +1,10 @@
 ---
 title: "PCA"
-output: github_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(eval = FALSE)
 library(tidyverse)
 library(factoextra)
 library(corrplot)

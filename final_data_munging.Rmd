@@ -2,7 +2,7 @@
 title: "Data Preparation"
 author: "Laura Cosgrove"
 date: "5/1/2019"
-output: github_document
+output: pdf_document
 ---
 
 ```{r}
@@ -331,7 +331,6 @@ cog_data %>%
   count(mean_risk = mean(risk_e4), mean_protective = mean(protective_e2)) %>% 
   ggplot(aes(x = mean_risk, y = mean_protective, size = n, color = cdr)) +
   geom_point(alpha = 0.9) + theme_bw()
-
 
 ```
 

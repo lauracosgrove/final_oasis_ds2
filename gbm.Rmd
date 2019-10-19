@@ -2,10 +2,12 @@
 title: "gbm"
 author: "Laura Cosgrove"
 date: "5/7/2019"
-output: github_document
+output: pdf_document
 ---
 
 ```{r}
+knitr::opts_chunk$set(eval = FALSE)
+
 library(tidyverse)
 library(caret)
 library(ranger)

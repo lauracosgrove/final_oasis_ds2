@@ -1,9 +1,11 @@
 ---
 title: "Random Forests"
-output: github_document
+output: pdf_document
 ---
 
 ```{r}
+knitr::opts_chunk$set(eval = FALSE)
+
 library(caret)
 library(randomForest)
 library(ranger)
